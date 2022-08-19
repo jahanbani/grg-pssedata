@@ -6,6 +6,9 @@ import re
 import warnings
 import sys
 import collections
+import pandas as pd
+from IPython import embed
+import yaml
 
 from grg_pssedata.struct import Bus
 from grg_pssedata.struct import Load
@@ -44,6 +47,13 @@ from grg_pssedata.struct import InductionMachine
 
 from grg_pssedata.exception import PSSEDataParsingError
 from grg_pssedata.exception import PSSEDataWarning
+
+with open('headers.yaml', 'r') as f:
+    try:
+        HEADERS = yaml.safe_load(f)
+    except yaml.YAMLError as exc:
+        print(exc)
+
 
 LineRequirements = collections.namedtuple('LineRequirements',['line_index','min_values','max_values','section'])
 
@@ -157,6 +167,8 @@ def parse_psse_case_lines(lines):
     generators = []
     branches = []
     transformers = []
+    transformers3w = []
+    transformers2w = []
     areas = []
     tt_dc_lines = []
     vsc_dc_lines = []
@@ -175,41 +187,49 @@ def parse_psse_case_lines(lines):
     line_index = 3
     while parse_line(lines[line_index])[0][0].strip() not in psse_terminuses:
         line_parts, comment = parse_line(lines[line_index], LineRequirements(line_index, 9, 13, "bus"))
-        buses.append(Bus(*line_parts))
+        buses.append(Bus(*line_parts).__df__())
         line_index += 1
     print_err('parsed {} buses'.format(len(buses)))
     if parse_line(lines[line_index])[0][0].strip() != psse_record_terminus:
         line_index += 1
 
+    Busdf = pd.DataFrame(data=buses, columns=HEADERS['bus'])
+
     load_index_offset = line_index
     while parse_line(lines[line_index])[0][0].strip() not in psse_terminuses:
         line_parts, comment = parse_line(lines[line_index], LineRequirements(line_index, 13, 14, "load"))
-        loads.append(Load(line_index - load_index_offset, *line_parts))
+        loads.append(Load(line_index - load_index_offset, *line_parts).__df__())
         line_index += 1
     print_err('parsed {} loads'.format(len(loads)))
 
     if parse_line(lines[line_index])[0][0].strip() != psse_record_terminus:
         line_index += 1
 
+    Loaddf = pd.DataFrame(data=loads, columns=HEADERS['load'])
+
     fixed_shunt_index_offset = line_index
     while parse_line(lines[line_index])[0][0].strip() not in psse_terminuses:
         line_parts, comment = parse_line(lines[line_index], LineRequirements(line_index, 5, 5, "fixed shunt"))
-        fixed_shunts.append(FixedShunt(line_index - fixed_shunt_index_offset, *line_parts))
+        fixed_shunts.append(FixedShunt(line_index - fixed_shunt_index_offset, *line_parts).__df__())
         line_index += 1
     print_err('parsed {} fixed shunts'.format(len(fixed_shunts)))
 
     if parse_line(lines[line_index])[0][0].strip() != psse_record_terminus:
         line_index += 1
 
+    fixshuntdf = pd.DataFrame(data=fixed_shunts, columns=HEADERS['fixshunt'])
+
     gen_index_offset = line_index
     while parse_line(lines[line_index])[0][0].strip() not in psse_terminuses:
         line_parts, comment = parse_line(lines[line_index], LineRequirements(line_index, 20, 28, "generator"))
-        generators.append(Generator(line_index - gen_index_offset, *line_parts))
+        generators.append(Generator(line_index - gen_index_offset, *line_parts).__df__())
         line_index += 1
     print_err('parsed {} generators'.format(len(generators)))
 
     if parse_line(lines[line_index])[0][0].strip() != psse_record_terminus:
         line_index += 1
+
+    gensdf = pd.DataFrame(data=generators, columns=HEADERS['generator'])
 
     branch_index_offset = line_index
     while parse_line(lines[line_index])[0][0].strip() not in psse_terminuses:
@@ -217,12 +237,14 @@ def parse_psse_case_lines(lines):
         #line = expand_commas(line)
         line_parts, comment = parse_line(lines[line_index], LineRequirements(line_index, 18, 24, "branch"))
         #print(line_parts)
-        branches.append(Branch(line_index - branch_index_offset, *line_parts))
+        branches.append(Branch(line_index - branch_index_offset, *line_parts).__df__())
         line_index += 1
     print_err('parsed {} branches'.format(len(branches)))
 
     if parse_line(lines[line_index])[0][0].strip() != psse_record_terminus:
         line_index += 1
+
+    branchesdf = pd.DataFrame(data=branches, columns=HEADERS['acline'])
 
     transformer_index = 0
     while parse_line(lines[line_index])[0][0].strip() not in psse_terminuses:
@@ -239,7 +261,8 @@ def parse_psse_case_lines(lines):
             winding_1 = TransformerWinding(1, *line_parts_3)
             winding_2 = TransformerWindingShort(2, *line_parts_4)
 
-            t = TwoWindingTransformer(transformer_index, parameters_1, parameters_2, winding_1, winding_2)
+            t = TwoWindingTransformer(transformer_index, parameters_1.__df__(), parameters_2.__df__(), winding_1.__df__(), winding_2.__df__()).__df__()
+            transformers2w.append(sum(t,[]))
 
             line_index += 4
         else: # three winding case
@@ -253,25 +276,31 @@ def parse_psse_case_lines(lines):
             winding_2 = TransformerWinding(2, *line_parts_4)
             winding_3 = TransformerWinding(3, *line_parts_5)
 
-            t = ThreeWindingTransformer(transformer_index, parameters_1, parameters_2, winding_1, winding_2, winding_3)
+            t = ThreeWindingTransformer(transformer_index, parameters_1.__df__(), parameters_2.__df__(), winding_1.__df__(), winding_2.__df__(), winding_3.__df__()).__df__()
+            transformers3w.append(sum(t,[]))
 
             line_index += 5
 
-        transformers.append(t)
+        transformers.append(sum(t,[]))
         transformer_index += 1
     print_err('parsed {} transformers'.format(len(transformers)))
 
     if parse_line(lines[line_index])[0][0].strip() != psse_record_terminus:
         line_index += 1
 
+    trans3wdf = pd.DataFrame(data=transformers3w, columns=HEADERS['transformer3w'])
+    trans2wdf = pd.DataFrame(data=transformers2w, columns=HEADERS['transformer2w'])
+
     while parse_line(lines[line_index])[0][0].strip() not in psse_terminuses:
         line_parts, comment = parse_line(lines[line_index], LineRequirements(line_index, 1, 5, "areas"))
-        areas.append(Area(*line_parts))
+        areas.append(Area(*line_parts).__df__())
         line_index += 1
     print_err('parsed {} areas'.format(len(areas)))
 
     if parse_line(lines[line_index])[0][0].strip() != psse_record_terminus:
         line_index += 1
+
+    areasdf = pd.DataFrame(data=areas, columns=HEADERS['area'])
 
     #two terminal dc line data
     ttdc_index = 0
@@ -284,7 +313,7 @@ def parse_psse_case_lines(lines):
         rectifier = TwoTerminalDCLineRectifier(*line_parts_2)
         inverter = TwoTerminalDCLineInverter(*line_parts_3)
 
-        tt_dc_lines.append(TwoTerminalDCLine(ttdc_index, parameters, rectifier, inverter))
+        tt_dc_lines.append(sum(TwoTerminalDCLine(ttdc_index, parameters.__df__(), rectifier.__df__(), inverter.__df__()).__df__(),[]))
 
         ttdc_index += 1
         line_index += 3
@@ -292,6 +321,8 @@ def parse_psse_case_lines(lines):
 
     if parse_line(lines[line_index])[0][0].strip() != psse_record_terminus:
         line_index += 1
+
+    tt_dc_linesdf = pd.DataFrame(data=tt_dc_lines, columns=HEADERS['twotermdc'])
 
     #vsc dc line data
     vscdc_index = 0
@@ -304,7 +335,7 @@ def parse_psse_case_lines(lines):
         converter_1 = VSCDCLineConverter(*line_parts_2)
         converter_2 = VSCDCLineConverter(*line_parts_3)
 
-        vsc_dc_lines.append(VSCDCLine(vscdc_index, parameters, converter_1, converter_2))
+        vsc_dc_lines.append(sum(VSCDCLine(vscdc_index, parameters.__df__(), converter_1.__df__(), converter_2.__df__()).__df__(),[]))
 
         line_index += 3
         vscdc_index += 1
@@ -313,16 +344,21 @@ def parse_psse_case_lines(lines):
     if parse_line(lines[line_index])[0][0].strip() != psse_record_terminus:
         line_index += 1
 
+    vsc_dc_linesdf = pd.DataFrame(data=vsc_dc_lines, columns=HEADERS['vscdc'])
+
     #transformer impedence correction tables data
     trans_offset_index = line_index
     while parse_line(lines[line_index])[0][0].strip() not in psse_terminuses:
         line_parts, comment = parse_line(lines[line_index], LineRequirements(line_index, 1, 23, "transformer correction"))
-        transformer_corrections.append(TransformerImpedanceCorrection(line_index - trans_offset_index, *line_parts))
+        transformer_corrections.append(TransformerImpedanceCorrection(line_index - trans_offset_index, *line_parts).__df__())
         line_index += 1
     print_err('parsed {} transformer corrections'.format(len(transformer_corrections)))
 
     if parse_line(lines[line_index])[0][0].strip() != psse_record_terminus:
         line_index += 1
+
+    # XXX
+    # trans_cor_df = pd.DataFrame(data=transformer_corrections, columns=HEADERS['vscdc'])
 
     #multi-terminal dc line data
     mtdc_count = 0
@@ -333,17 +369,17 @@ def parse_psse_case_lines(lines):
         nconv, ndcbs, ndcln = [], [], []
         for i in range(0, parameters.nconv):
             line_parts, comment = parse_line(lines[line_index + i + 1], LineRequirements(line_index + i + 1, 16, 16, "multi-terminal dc line"))
-            nconv.append(MultiTerminalDCLineConverter(*line_parts))
+            nconv.append(MultiTerminalDCLineConverter(*line_parts).__df__())
 
         for i in range(parameters.nconv, parameters.ndcbs+parameters.nconv):
             line_parts, comment = parse_line(lines[line_index + i + 1], LineRequirements(line_index + i + 1, 8, 8, "multi-terminal dc line"))
-            ndcbs.append(MultiTerminalDCLineDCBus(*line_parts))
+            ndcbs.append(MultiTerminalDCLineDCBus(*line_parts).__df__())
 
         for i in range(parameters.nconv + parameters.ndcbs, parameters.ndcln+parameters.nconv+parameters.ndcbs):
             line_parts, comment = parse_line(lines[line_index + i + 1], LineRequirements(line_index + i + 1, 6, 6, "multi-terminal dc line"))
-            ndcln.append(MultiTerminalDCLineDCLink(*line_parts))
+            ndcln.append(MultiTerminalDCLineDCLink(*line_parts).__df__())
 
-        mt_dc_lines.append(MultiTerminalDCLine(mtdc_count, parameters, nconv, ndcbs, ndcln))
+        mt_dc_lines.append(MultiTerminalDCLine(mtdc_count, parameters, nconv, ndcbs, ndcln).__df__())
         mtdc_count += 1
         line_index += 1 + parameters.nconv + parameters.ndcbs + parameters.ndcln
     print_err('parsed {} multi-terminal dc lines'.format(len(mt_dc_lines)))
@@ -352,30 +388,34 @@ def parse_psse_case_lines(lines):
         line_index += 1
 
     #multi-section line grouping data
+    print('parsing multisection lines')
     msline_index_offset = line_index
     while parse_line(lines[line_index])[0][0].strip() not in psse_terminuses:
         line_parts, comment = parse_line(lines[line_index], LineRequirements(line_index, 5, 5, "multi-section line"))
-        line_groupings.append(MultiSectionLineGrouping(line_index - msline_index_offset, *line_parts))
+        line_groupings.append(MultiSectionLineGrouping(line_index - msline_index_offset, *line_parts).__df__())
         line_index += 1
     print_err('parsed {} multi-section lines'.format(len(line_groupings)))
 
     if parse_line(lines[line_index])[0][0].strip() != psse_record_terminus:
         line_index += 1
 
+
     while parse_line(lines[line_index])[0][0].strip() not in psse_terminuses:
         line_parts, comment = parse_line(lines[line_index], LineRequirements(line_index, 2, 2, "zone"))
-        zones.append(Zone(*line_parts))
+        zones.append(Zone(*line_parts).__df__())
         line_index += 1
     print_err('parsed {} zones'.format(len(zones)))
 
     if parse_line(lines[line_index])[0][0].strip() != psse_record_terminus:
         line_index += 1
 
+    zonesdf = pd.DataFrame(data=zones, columns=HEADERS['zone'])
+
     # inter area transfer data
     intarea_index_offset = line_index
     while parse_line(lines[line_index])[0][0].strip() not in psse_terminuses:
         line_parts, comment = parse_line(lines[line_index], LineRequirements(line_index, 4, 4, "inter-area transfer"))
-        transfers.append(InterareaTransfer(line_index - intarea_index_offset, *line_parts))
+        transfers.append(InterareaTransfer(line_index - intarea_index_offset, *line_parts).__df__())
         line_index += 1
     print_err('parsed {} inter-area transfers'.format(len(transfers)))
 
@@ -384,18 +424,20 @@ def parse_psse_case_lines(lines):
 
     while parse_line(lines[line_index])[0][0].strip() not in psse_terminuses:
         line_parts, comment = parse_line(lines[line_index], LineRequirements(line_index, 2, 2, "owner"))
-        owners.append(Owner(*line_parts))
+        owners.append(Owner(*line_parts).__df__())
         line_index += 1
     print_err('parsed {} owners'.format(len(owners)))
 
     if parse_line(lines[line_index])[0][0].strip() != psse_record_terminus:
         line_index += 1
 
+    ownersdf = pd.DataFrame(data=owners, columns=HEADERS['owner'])
+
     # facts device data block
     facts_index = 0
     while parse_line(lines[line_index])[0][0].strip() not in psse_terminuses:
         line_parts, comment = parse_line(lines[line_index], LineRequirements(line_index, 19, 21, "facts device"))
-        facts.append(FACTSDevice(facts_index, *line_parts))
+        facts.append(FACTSDevice(facts_index, *line_parts).__df__())
         facts_index += 1
         line_index += 1
     print_err('parsed {} facts devices'.format(len(facts)))
@@ -403,16 +445,20 @@ def parse_psse_case_lines(lines):
     if parse_line(lines[line_index])[0][0].strip() != psse_record_terminus:
         line_index += 1
 
+    factsdf = pd.DataFrame(data=facts, columns=HEADERS['facts'])
+
     # switched shunt data block
     swithced_shunt_index_offset = line_index
     while parse_line(lines[line_index])[0][0].strip() not in psse_terminuses:
         line_parts, comment = parse_line(lines[line_index], LineRequirements(line_index, 12, 26, "swticthed shunt"))
-        switched_shunts.append(SwitchedShunt(line_index - swithced_shunt_index_offset, *line_parts))
+        switched_shunts.append(SwitchedShunt(line_index - swithced_shunt_index_offset, *line_parts).__df__())
         line_index += 1
     print_err('parsed {} switched shunts'.format(len(switched_shunts)))
 
     if parse_line(lines[line_index])[0][0].strip() != psse_record_terminus:
         line_index += 1
+
+    swshuntdf = pd.DataFrame(data=switched_shunts, columns=HEADERS['swshunt'])
 
     # GNE device data
     gne_count = 0
@@ -430,7 +476,7 @@ def parse_psse_case_lines(lines):
     indm_index_offset = line_index
     while parse_line(lines[line_index])[0][0].strip() not in psse_terminuses:
         line_parts, comment = parse_line(lines[line_index], LineRequirements(line_index, 34, 34, "induction machine"))
-        induction_machines.append(InductionMachine(line_index - indm_index_offset, *line_parts))
+        induction_machines.append(InductionMachine(line_index - indm_index_offset, *line_parts).__df__())
         line_index += 1
     print_err('parsed {} induction machines'.format(len(induction_machines)))
 
@@ -443,21 +489,12 @@ def parse_psse_case_lines(lines):
         print_err('  '+lines[line_index])
         line_index += 1
 
-    case = Case(ic, sbase, rev, xfrrat, nxfrat, basefrq, record1, record2,
-        buses, loads, fixed_shunts, generators, branches, transformers, areas,
-        tt_dc_lines, vsc_dc_lines, transformer_corrections, mt_dc_lines,
-        line_groupings, zones, transfers, owners, facts, switched_shunts,
-        gnes, induction_machines)
-
-    #print(case)
-    #print(case.to_psse())
-    return case
+    return Busdf, Loaddf, gensdf, branchesdf, trans3wdf, trans2wdf, tt_dc_linesdf, vsc_dc_linesdf, factsdf, fixshuntdf, swshuntdf, areasdf, zonesdf, ownersdf
 
 
-def main(args):
-    case = parse_psse_case_file(args.file)
-    print(case)
-    print(case.to_psse())
+def read_psse(args):
+    Busdf, Loaddf, gensdf, branchesdf, trans3wdf, trans2wdf, tt_dc_linesdf, vsc_dc_linesdf, factsdf, fixshuntdf, swshuntdf, areasdf, zonesdf, ownersdf = parse_psse_case_file(args.file)
+    return Busdf, Loaddf, gensdf, branchesdf, trans3wdf, trans2wdf, tt_dc_linesdf, vsc_dc_linesdf, factsdf, fixshuntdf, swshuntdf, areasdf, zonesdf, ownersdf
 
 
 def build_cli_parser():
@@ -467,6 +504,15 @@ def build_cli_parser():
     return parser
 
 
-if __name__ == '__main__':
-    parser = build_cli_parser()
-    main(parser.parse_args())
+# if __name__ == '__main__':
+#     parser = build_cli_parser()
+#     Busdf, Loaddf, gensdf, branchesdf, trans3wdf, trans2wdf, tt_dc_linesdf, vsc_dc_linesdf, factsdf, fixshuntdf, swshuntdf, areasdf, zonesdf, ownersdf = read_psse(parser.parse_args())
+
+
+
+parser = build_cli_parser()
+Busdf, Loaddf, gensdf, branchesdf, trans3wdf, trans2wdf, tt_dc_linesdf, vsc_dc_linesdf, factsdf, fixshuntdf, swshuntdf, areasdf, zonesdf, ownersdf = read_psse(parser.parse_args())
+
+
+# creating the lines
+

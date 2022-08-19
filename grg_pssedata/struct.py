@@ -398,6 +398,12 @@ class Bus(object):
         self.evhi = float(evhi)
         self.evlo = float(evlo)
 
+    def __df__(self):
+        data = [self.i, self.name, self.basekv, self.ide, self.area, self.zone,
+                self.owner, self.vm, self.va, self.nvhi, self.nvlo, self.evhi,
+                self.evlo]
+        return data
+
     def __str__(self):
         data = [self.i, self.name, self.basekv, self.ide, self.area, self.zone,
                 self.owner, self.vm, self.va, self.nvhi, self.nvlo, self.evhi,
@@ -494,6 +500,14 @@ class Load(object):
         self.intrpt = int(intrpt)
 
 
+    def __df__(self):
+        '''removed index XXX
+        '''
+        data = [self.i, self.id, self.status, self.area, self.zone,
+            self.pl, self.ql, self.ip, self.iq, self.yp, self.yq, self.owner,
+            self.scale, self.intrpt]
+        return data
+
     def __str__(self):
         data = [self.index, self.i, self.id, self.status, self.area, self.zone,
             self.pl, self.ql, self.ip, self.iq, self.yp, self.yq, self.owner,
@@ -555,6 +569,12 @@ class FixedShunt(object):
         self.status = int(status)
         self.gl = float(gl)
         self.bl = float(bl)
+
+    def __df__(self):
+        '''removed index XXX
+        '''
+        data = [self.i, self.id, self.status, self.gl, self.bl]
+        return data
 
     def __str__(self):
         data = [self.index, self.i, self.id, self.status, self.gl, self.bl]
@@ -653,6 +673,15 @@ class SwitchedShunt(object):
         self.b7 = _guard_none(float, b7)
         self.n8 = _guard_none(int, n8)
         self.b8 = _guard_none(float, b8)
+
+    def __df__(self):
+        '''removed index XXX
+        '''
+        data = [self.i, self.modsw, self.adjm, self.stat, self.vswhi,
+                self.vswlo, self.swrem, self.rmpct, self.rmidnt, self.binit,
+                self.n1, self.b1, self.n2, self.b2, self.n3, self.b3, self.n4, self.b4,
+                self.n5, self.b5, self.n6, self.b6, self.n7, self.b7, self.n8, self.b8]
+        return data
 
     def __str__(self):
         data = [self.index, self.i, self.modsw, self.adjm, self.stat, self.vswhi,
@@ -779,6 +808,16 @@ class Generator(object):
         self.wmod = int(wmod)
         self.wpf = float(wpf)
 
+    def __df__(self):
+        """return list of data; removed the index XXX
+        """
+        data = [self.i, self.id, self.pg, self.qg, self.qt, self.qb,
+                self.vs, self.ireg, self.mbase, self.zr, self.zx, self.rt, self.xt,
+                self.gtap, self.stat, self.rmpct, self.pt, self.pb, self.o1,
+                self.f1, self.o2, self.f2, self.o3, self.f3, self.o4, self.f4,
+                self.wmod, self.wpf]
+        return data
+
     def __str__(self):
         data = [self.index, self.i, self.id, self.pg, self.qg, self.qt, self.qb,
                 self.vs, self.ireg, self.mbase, self.zr, self.zx, self.rt, self.xt,
@@ -895,6 +934,13 @@ class Branch(object):
         self.o4 = int(o4)
         self.f4 = float(f4)
 
+    def __df__(self):
+        data = [self.i, self.j, self.ckt, self.r, self.x, self.b,
+                self.ratea, self.rateb, self.ratec, self.gi, self.bi, self.gj,
+                self.bj, self.st, self.met, self.len, self.o1, self.f1, self.o2,
+                self.f2, self.o3, self.f3, self.o4, self.f4]
+        return data
+
     def __str__(self):
         data = [self.index, self.i, self.j, self.ckt, self.r, self.x, self.b,
                 self.ratea, self.rateb, self.ratec, self.gi, self.bi, self.gj,
@@ -969,6 +1015,12 @@ class TwoWindingTransformer(object):
     def is_three_winding(self):
         return False
 
+    def __df__(self):
+        '''removed index XXX
+        '''
+        data = [self.p1, self.p2, self.w1, self.w2]
+        return data
+
     def __str__(self):
         data = [self.index, self.p1, self.p2, self.w1, self.w2]
         return ' '.join([str(x) for x in data])
@@ -1018,6 +1070,12 @@ class ThreeWindingTransformer(object):
         self.w1 = w1
         self.w2 = w2
         self.w3 = w3
+
+    def __df__(self):
+        '''removed index XXX
+        '''
+        data = [self.p1, self.p2, self.w1, self.w2, self.w3]
+        return data
 
     def __str__(self):
         data = [self.index, self.p1, self.p2, self.w1, self.w2, self.w3]
@@ -1108,6 +1166,13 @@ class TransformerParametersFirstLine(object):
         self.f4 = float(f4)
         self.vecgrp = unquote_string(vecgrp)
 
+    def __df__(self):
+        data = [self.i, self.j, self.k, self.ckt, self.cw, self.cz, self.cm,
+                self.mag1, self.mag2, self.nmetr, self.name, self.stat, self.o1,
+                self.f1, self.o2, self.f2, self.o3, self.f3, self.o4, self.f4,
+                self.vecgrp]
+        return data
+
     def __str__(self):
         data = [self.i, self.j, self.k, self.ckt, self.cw, self.cz, self.cm,
                 self.mag1, self.mag2, self.nmetr, self.name, self.stat, self.o1,
@@ -1189,6 +1254,12 @@ class TransformerParametersSecondLine(object):
         self.vmstar = float(vmstar)
         self.anstar = float(anstar)
 
+    def __df__(self):
+        data = [self.r12, self.x12, self.sbase12, self.r23, self.x23,
+                self.sbase23, self.r31, self.x31, self.sbase31, self.vmstar,
+                self.anstar]
+        return data
+
     def __str__(self):
         data = [self.r12, self.x12, self.sbase12, self.r23, self.x23,
                 self.sbase23, self.r31, self.x31, self.sbase31, self.vmstar,
@@ -1240,6 +1311,10 @@ class TransformerParametersSecondLineShort(object):
         self.r12 = float(r12)
         self.x12 = float(x12)
         self.sbase12 = float(sbase12)
+
+    def __df__(self):
+        data = [self.r12, self.x12, self.sbase12]
+        return data
 
     def __str__(self):
         data = [self.r12, self.x12, self.sbase12]
@@ -1318,6 +1393,14 @@ class TransformerWinding(object):
         self.cx = float(cx)
         self.cnxa = float(cnxa)
 
+    def __df__(self):
+        '''removed index XXX
+        '''
+        data = [self.windv, self.nomv, self.ang, self.rata, self.ratb,
+                self.ratc, self.cod, self.cont, self.rma, self.rmi, self.vma,
+                self.vmi, self.ntp, self.tab, self.cr, self.cx, self.cnxa]
+        return data
+
     def __str__(self):
         data = [self.index, self.windv, self.nomv, self.ang, self.rata, self.ratb,
                 self.ratc, self.cod, self.cont, self.rma, self.rmi, self.vma,
@@ -1376,6 +1459,12 @@ class TransformerWindingShort(object):
         self.windv = float(windv)
         self.nomv = float(nomv)
 
+    def __df__(self):
+        '''removed index XXX
+        '''
+        data = [self.windv, self.nomv]
+        return data
+
     def __str__(self):
         data = [self.index, self.windv, self.nomv]
         return ' '.join([str(x) for x in data])
@@ -1430,6 +1519,10 @@ class Area(object):
         self.arnam = unquote_string(arnam)
 
 
+    def __df__(self):
+        data = [self.i, self.isw, self.pdes, self.ptol, self.arnam]
+        return data
+
     def __str__(self):
         data = [self.i, self.isw, self.pdes, self.ptol, self.arnam]
         return ' '.join([str(x) for x in data])
@@ -1476,6 +1569,10 @@ class Zone(object):
         self.zoname = unquote_string(zoname)
 
 
+    def __df__(self):
+        data = [self.i, self.zoname]
+        return data
+
     def __str__(self):
         data = [self.i, self.zoname]
         return ' '.join([str(x) for x in data])
@@ -1521,6 +1618,10 @@ class Owner(object):
 
         self.i = int(i)
         self.owname = unquote_string(owname)
+
+    def __df__(self):
+        data = [self.i, self.owname]
+        return data
 
     def __str__(self):
         data = [self.i, self.owname]
@@ -1607,8 +1708,15 @@ class FACTSDevice(object):
         self.remot = int(remot)
         self.mname = unquote_string(mname)
 
+    def __df__(self):
+        data = [self.name, self.i, self.j, self.mode, self.pdes, self.qdes,
+                self.vset, self.shmx, self.trmx, self.vtmn, self.vtmx, self.vsmx,
+                self.imx, self.linx, self.rmpct, self.owner, self.set1, self.set2,
+                self.vsref, self.remot, self.mname]
+        return data
+
     def __str__(self):
-        data = [self.name, self.im, self.j, self.mode, self.pdes, self.qdes,
+        data = [self.name, self.i, self.j, self.mode, self.pdes, self.qdes,
                 self.vset, self.shmx, self.trmx, self.vtmn, self.vtmx, self.vsmx,
                 self.imx, self.linx, self.rmpct, self.owner, self.set1, self.set2,
                 self.vsref, self.remot, self.mname]
@@ -1655,6 +1763,10 @@ class VSCDCLine(object):
         self.params = params
         self.c1 = c1
         self.c2 = c2
+
+    def __df__(self):
+        data = [self.params, self.c1, self.c2]
+        return data
 
     def __str__(self):
         data = [self.params, self.c1, self.c2]
@@ -1711,6 +1823,11 @@ class VSCDCLineParameters(object):
         self.f3 = float(f3)
         self.o4 = int(o4)
         self.f4 = float(f4)
+
+    def __df__(self):
+        data = [self.name, self.mdc, self.rdc, self.o1, self.f1,
+                self.o2, self.f2, self.o3, self.f3, self.o4, self.f4]
+        return data
 
     def __str__(self):
         data = [self.name, self.mdc, self.rdc, self.o1, self.f1,
@@ -1784,6 +1901,12 @@ class VSCDCLineConverter(object):
         self.remot = int(remot)
         self.rmpct = float(rmpct)
 
+    def __df__(self):
+        data = [self.ibus, self.type, self.mode, self.dcset, self.acset, self.aloss,
+                self.bloss, self.minloss, self.smax, self.imax, self.pwf, self.maxq,
+                self.minq, self.remot, self.rmpct]
+        return data
+
     def __str__(self):
         data = [self.ibus, self.type, self.mode, self.dcset, self.acset, self.aloss,
                 self.bloss, self.minloss, self.smax, self.imax, self.pwf, self.maxq,
@@ -1829,6 +1952,10 @@ class TwoTerminalDCLine(object):
         self.params = params
         self.rectifier = rectifier
         self.inverter = inverter
+
+    def __df__(self):
+        data = [self.params, self.rectifier, self.inverter]
+        return data
 
     def __str__(self):
         data = [self.params, self.rectifier, self.inverter]
@@ -1892,6 +2019,12 @@ class TwoTerminalDCLineParameters(object):
         self.dcvmin = float(dcvmin)
         self.cccitmx = int(cccitmx)
         self.cccacc = float(cccacc)
+
+    def __df__(self):
+        data = [self.name, self.mdc, self.rdc, self.setvl, self.vschd, self.vcmod,
+                self.rcomp, self.delti, self.meter, self.dcvmin, self.cccitmx,
+                self.cccacc]
+        return data
 
     def __str__(self):
         data = [self.name, self.mdc, self.rdc, self.setvl, self.vschd, self.vcmod,
@@ -1971,6 +2104,13 @@ class TwoTerminalDCLineRectifier(object):
         self.itr = int(itr)
         self.idr = unquote_string(idr)
         self.xcapr = float(xcapr)
+
+    def __df__(self):
+        data = [self.ipr, self.nbr, self.anmxr, self.anmnr, self.rcr,
+                self.xcr, self.ebasr, self.trr, self.tapr, self.tmxr,
+                self.tmnr, self.stpr, self.icr, self.ifr, self.itr,
+                self.idr, self.xcapr]
+        return data
 
     def __str__(self):
         data = [self.ipr, self.nbr, self.anmxr, self.anmnr, self.rcr,
@@ -2054,6 +2194,13 @@ class TwoTerminalDCLineInverter(object):
         self.idi = unquote_string(idi)
         self.xcapi = float(xcapi)
 
+    def __df__(self):
+        data = [self.ipi, self.nbi, self.anmxi, self.anmni, self.rci,
+                self.xci, self.ebasi, self.tri, self.tapi, self.tmxi,
+                self.tmni, self.stpi, self.ici, self.ifi, self.iti,
+                self.idi, self.xcapi]
+        return data
+
     def __str__(self):
         data = [self.ipi, self.nbi, self.anmxi, self.anmni, self.rci,
                 self.xci, self.ebasi, self.tri, self.tapi, self.tmxi,
@@ -2129,6 +2276,13 @@ class TransformerImpedanceCorrection(object):
         self.t11 = float(t11)
         self.f11 = float(f11)
 
+    def __df__(self):
+        data = [self.i, self.t1, self.f1, self.t2, self.f2, self.t3, self.f3,
+                self.t4, self.f4, self.t5, self.f5, self.t6, self.f6, self.t7,
+                self.f7, self.t8, self.f8, self.t9, self.f9, self.t10, self.f10,
+                self.t11, self.f11]
+        return data
+
     def __str__(self):
         data = [self.i, self.t1, self.f1, self.t2, self.f2, self.t3, self.f3,
                 self.t4, self.f4, self.t5, self.f5, self.t6, self.f6, self.t7,
@@ -2188,6 +2342,24 @@ class MultiSectionLineGrouping(object):
         self.met = int(met)
         for n, dum in enumerate(dumi):
             setattr(self, "dum{0}".format(n+1), int(dum))
+
+    def __df__(self):
+        data = [self.i, self.j, self.id, self.met]
+        for i in range(1, 10):
+            if hasattr(self, "dum{0}".format(i)):
+                data.append(getattr(self, "dum{0}".format(i)))
+            else:
+                break
+        return data
+
+    def __df__(self):
+        data = [self.i, self.j, self.id, self.met]
+        for i in range(1, 10):
+            if hasattr(self, "dum{0}".format(i)):
+                data.append(getattr(self, "dum{0}".format(i)))
+            else:
+                break
+        return data
 
     def __str__(self):
         data = [self.i, self.j, self.id, self.met]
@@ -2250,6 +2422,10 @@ class InterareaTransfer(object):
         self.arto = int(arto)
         self.trid = unquote_string(trid)
         self.ptran = float(ptran)
+
+    def __df__(self):
+        data = [self.arfrom, self.arto, self.trid, self.ptran]
+        return data
 
     def __str__(self):
         data = [self.arfrom, self.arto, self.trid, self.ptran]
@@ -2364,6 +2540,14 @@ class InductionMachine(object):
         self.ia2 = float(ia2)
         self.xamult = float(xamult)
 
+    def __df__(self):
+        data = [self.i, self.id, self.stat, self.scode, self.dcode, self.area, self.zone,
+                self.owner, self.tcode, self.bcode, self.mbase, self.ratekv, self.pcode,
+                self.pset, self.h, self.a, self.b, self.d, self.e, self.ra, self.xa,
+                self.xm, self.r1, self.x1, self.r2, self.x2, self.x3, self.e1, self.se1,
+                self.e2, self.se2, self.ia1, self.ia2, self.xamult]
+        return data
+
     def __str__(self):
         data = [self.i, self.id, self.stat, self.scode, self.dcode, self.area, self.zone,
                 self.owner, self.tcode, self.bcode, self.mbase, self.ratekv, self.pcode,
@@ -2416,6 +2600,12 @@ class MultiTerminalDCLine(object):
         self.converters = nconv
         self.dc_buses = ndcbs
         self.dc_links = ndcln
+
+    def __df__(self):
+        '''removed index XXX
+        '''
+        data = [self.params, self.converters, self.dc_buses, self.dc_links]
+        return data
 
     def __str__(self):
         data = []
@@ -2474,6 +2664,10 @@ class MultiTerminalDCLineParameters(object):
         self.vconv = int(vconv)
         self.vcmod = float(vcmod)
         self.vconvn = int(vconvn)
+
+    def __df__(self):
+        data = [quote_string(self.name), self.nconv, self.ndcbs, self.ndcln, self.mdc, self.vconv, self.vcmod, self.vconvn]
+        return data
 
     def __str__(self):
         data = [quote_string(self.name), self.nconv, self.ndcbs, self.ndcln, self.mdc, self.vconv, self.vcmod, self.vconvn]
@@ -2547,6 +2741,12 @@ class MultiTerminalDCLineConverter(object):
         self.marg = float(marg)
         self.cnvcod = int(cnvcod)
 
+    def __df__(self):
+        data = [self.ib, self.n, self.angmx, self.angmn, self.rc, self.xc,
+                self.ebas, self.tr, self.tap, self.tpmx, self.tpmn, self.tstp,
+                self.setvl, self.dcpf, self.marg, self.cnvcod]
+        return data
+
     def __str__(self):
         data = [self.ib, self.n, self.angmx, self.angmn, self.rc, self.xc,
                 self.ebas, self.tr, self.tap, self.tpmx, self.tpmn, self.tstp,
@@ -2608,6 +2808,10 @@ class MultiTerminalDCLineDCBus(object):
         self.rgrnd = float(rgrnd)
         self.owner = int(owner)
 
+    def __df__(self):
+        data = [self.idc, self.ib, self.area, self.zone, quote_string(self.dcname), self.idc2, self.rgrnd, self.owner]
+        return data
+
     def __str__(self):
         data = [self.idc, self.ib, self.area, self.zone, quote_string(self.dcname), self.idc2, self.rgrnd, self.owner]
         return ' '.join([str(x) for x in data])
@@ -2658,6 +2862,10 @@ class MultiTerminalDCLineDCLink(object):
         self.met = int(met)
         self.rdc = float(rdc)
         self.ldc = float(ldc)
+
+    def __df__(self):
+        data = [self.idc, self.jdc, quote_string(self.dcckt), self.met, self.rdc, self.ldc]
+        return data
 
     def __str__(self):
         data = [self.idc, self.jdc, quote_string(self.dcckt), self.met, self.rdc, self.ldc]
