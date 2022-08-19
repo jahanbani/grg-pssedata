@@ -1,3 +1,5 @@
+A modified version of the package developed at Los Alamos National Lab. This can be easily adapted for v35. Uncomment the `headers.yaml` rows (and probably some other tweaks are needed).
+
 ============
 grg-pssedata
 ============
