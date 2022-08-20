@@ -508,11 +508,65 @@ def build_cli_parser():
 #     parser = build_cli_parser()
 #     Busdf, Loaddf, gensdf, branchesdf, trans3wdf, trans2wdf, tt_dc_linesdf, vsc_dc_linesdf, factsdf, fixshuntdf, swshuntdf, areasdf, zonesdf, ownersdf = read_psse(parser.parse_args())
 
+def fix_trans3w(trans3wpre):
+    trans3wpre.loc[trans3wpre['stat']==1,'nl']=3
+    trans3wpre.loc[trans3wpre['stat']==0,'nl']=0
+    trans3wpre.loc[trans3wpre['stat'].isin([2,3,4]),'nl']=2
+    print(f"total number of lines {trans3wpre['nl'].sum()}")
+    trans3wpre = trans3wpre.drop(columns='nl')
+    t3w=[]
+    for ibus, jbus, kbus, ckt, cw, cz, name, stat,  vecgrp, r1_2, x1_2, sbase1_2, r2_3, x2_3, sbase2_3, r3_1, x3_1, sbase3_1, wdg1rate1, wdg1rate2, wdg1rate3, wdg2rate1, wdg2rate2, wdg2rate3, wdg3rate1, wdg3rate2, wdg3rate3 in trans3wpre.values:
+        if stat ==1:
+            t3w.append([ibus, jbus, ckt, cw, cz, name, stat,  vecgrp, r1_2, x1_2, sbase1_2, wdg1rate1, wdg1rate2, wdg1rate3])
+            t3w.append([jbus, kbus, ckt, cw, cz, name, stat,  vecgrp, r2_3, x2_3, sbase2_3, wdg2rate1, wdg2rate2, wdg2rate3])
+            t3w.append([ibus, kbus, ckt, cw, cz, name, stat,  vecgrp, r3_1, x3_1, sbase3_1, wdg3rate1, wdg3rate2, wdg3rate3])
+        elif stat==2: # only winding 2 is out
+            t3w.append([ibus, jbus, ckt, cw, cz, name, stat,  vecgrp, r1_2, x1_2, sbase1_2, wdg1rate1, wdg1rate2, wdg1rate3])
+            t3w.append([ibus, kbus, ckt, cw, cz, name, stat,  vecgrp, r3_1, x3_1, sbase3_1, wdg3rate1, wdg3rate2, wdg3rate3])
+        elif stat==3: # only winding 3 is out: add 1 and 2
+            t3w.append([ibus, jbus, ckt, cw, cz, name, stat,  vecgrp, r1_2, x1_2, sbase1_2, wdg1rate1, wdg1rate2, wdg1rate3])
+            t3w.append([jbus, kbus, ckt, cw, cz, name, stat,  vecgrp, r2_3, x2_3, sbase2_3, wdg2rate1, wdg2rate2, wdg2rate3])
+        elif stat==1: # only winding 1 is out: add 2 and 3
+            t3w.append([jbus, kbus, ckt, cw, cz, name, stat,  vecgrp, r2_3, x2_3, sbase2_3, wdg2rate1, wdg2rate2, wdg2rate3])
+            t3w.append([ibus, kbus, ckt, cw, cz, name, stat,  vecgrp, r3_1, x3_1, sbase3_1, wdg3rate1, wdg3rate2, wdg3rate3])
+    return pd.DataFrame(data=t3w, columns=['ibus', 'jbus', 'ckt', 'cw', 'cz', 'name', 'stat', 'vecgrp', 'r', 'x', 'sbase', 'rate1', 'rate2', 'rate3'])
 
 
 parser = build_cli_parser()
-Busdf, Loaddf, gensdf, branchesdf, trans3wdf, trans2wdf, tt_dc_linesdf, vsc_dc_linesdf, factsdf, fixshuntdf, swshuntdf, areasdf, zonesdf, ownersdf = read_psse(parser.parse_args())
+busdf, loaddf, gensdf, branchesdf, trans3wdf, trans2wdf, tt_dc_linesdf, vsc_dc_linesdf, factsdf, fixshuntdf, swshuntdf, areasdf, zonesdf, ownersdf = read_psse(parser.parse_args())
+
+# take in-service elements only
+# for 3-winding transformers: 0: all out 1: all in 2: only 2 is out 3: only 3 is out 4: only 1 is out
+# dfs = [busdf, loaddf, gensdf, branchesdf, trans3wdf, trans2wdf, tt_dc_linesdf, vsc_dc_linesdf, factsdf, fixshuntdf, swshuntdf, areasdf, zonesdf, ownersdf]
+# for inx, df in enumerate(dfs):
+#     if 'stat' in df.columns:
+#         df = df.loc[df['stat']!=0]
+#         dfs[inx] = df
+#     elif 'ide' in df.columns:
+#         df = df.loc[df['ide']!=0]
+#         dfs[inx] = df
+
+# busdf, loaddf, gensdf, branchesdf, trans3wdf, trans2wdf, tt_dc_linesdf, vsc_dc_linesdf, factsdf, fixshuntdf, swshuntdf, areasdf, zonesdf, ownersdf = dfs
+bus = busdf.loc[busdf['ide']!=4, ["ibus", "name", "baskv", "ide", "area", "zone"]]
+load = loaddf.loc[loaddf['stat']!=0, ["ibus", "loadid", "stat", "area", "zone", "pl", "ql"]]
+gens = gensdf.loc[gensdf['stat']!=0, ["ibus", "machid", "pg", "qg", "qt", "qb", "vs", "ireg", "mbase"]]
+acbrnch = branchesdf.loc[branchesdf['stat']!=0, ["ibus", "jbus", "ckt", "rpu", "xpu", "bpu", "rate1", "rate2", "rate3"]]
+tt_dc_lines = tt_dc_linesdf.loc[tt_dc_linesdf[''], ['ipr', 'ipi']]
+trans2w = trans2wdf.loc[trans2wdf['stat']!=0,["ibus", "jbus", "kbus", "ckt", "cw", "cz", "name", "stat", "vecgrp", "r1_2", "x1_2", "sbase1_2", "wdg1rate1", "wdg1rate2", "wdg1rate3"]]
+trans3wpre = trans3wdf.loc[trans3wdf['stat']!=0,["ibus", "jbus", "kbus", "ckt", "cw", "cz", "name", "stat",  "vecgrp", "r1_2", "x1_2", "sbase1_2", "r2_3", "x2_3", "sbase2_3", "r3_1", "x3_1", "sbase3_1", "wdg1rate1", "wdg1rate2", "wdg1rate3", "wdg2rate1", "wdg2rate2", "wdg2rate3", "wdg3rate1", "wdg3rate2", "wdg3rate3"]]
+trans3w = fix_trans3w(trans3wpre)
+
+# XXX fix the impedances of 3 winding transformers
+# XXX fix the impedances of 3 winding transformers
+# XXX fix the impedances of 3 winding transformers
 
 
-# creating the lines
+# all connections
+# creating the lines using branches and transformers and DC lines (what else?)
+
+
+
+
+import ipdb; ipdb.set_trace()
+
 
