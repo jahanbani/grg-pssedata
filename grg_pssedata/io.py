@@ -9,6 +9,7 @@ import collections
 import pandas as pd
 from IPython import embed
 import yaml
+import numpy as np
 
 from grg_pssedata.struct import Bus
 from grg_pssedata.struct import Load
@@ -531,6 +532,29 @@ def fix_trans3w(trans3wpre):
             t3w.append([ibus, kbus, ckt, cw, cz, name, stat,  vecgrp, r3_1, x3_1, sbase3_1, wdg3rate1, wdg3rate2, wdg3rate3])
     return pd.DataFrame(data=t3w, columns=['ibus', 'jbus', 'ckt', 'cw', 'cz', 'name', 'stat', 'vecgrp', 'r', 'x', 'sbase', 'rate1', 'rate2', 'rate3'])
 
+def fix_tt_dc(df):
+    '''calculate p, qmin, and qmin for rectifier and inverter
+    '''
+    # XXX the Qmin becomes larger than Qmax. This is the same as matpower; WHY? XXX
+
+    df.loc[df['mdc']==1,'pmw']=df.loc[df['mdc']==1,'setvl'] # SETVL is the desired real power demand
+    df.loc[df['mdc']==2,'pmw']=df.loc[df['mdc']==2,'setvl'] * df.loc[df['mdc']==2,'vschd'] / 1000  # SETVL is the current in amps (need devide 1000 to convert to MW)
+    df.loc[~(df['mdc'].isin([1,2])),'pmw']=0
+
+    # Q min and max for rectifires and inverters
+    df.loc[:, 'qminr'] = df['pmw'] * df['anmnr']
+    df.loc[:, 'qmini'] = df['pmw'] * df['anmni']
+
+    df.loc[:, 'qmaxr'] = df['pmw'] * np.tan(np.arccos(0.5 * (np.cos(np.deg2rad(df['anmxr'])) + np.cos(np.pi/3))))
+    df.loc[:, 'qmaxi'] = df['pmw'] * np.tan(np.arccos(0.5 * (np.cos(np.deg2rad(df['anmxi'])) + np.cos(np.pi/3))))
+    df.loc[(df['qminr']<0), 'qminr'] = -1 * df.loc[(df['qminr']<0), 'qminr']
+    df.loc[(df['qmini']<0), 'qmini'] = -1 * df.loc[(df['qmini']<0), 'qmini']
+    df.loc[(df['qmaxr']<0), 'qmaxr'] = -1 * df.loc[(df['qmaxr']<0), 'qmaxr']
+    df.loc[(df['qmaxi']<0), 'qmaxi'] = -1 * df.loc[(df['qmaxi']<0), 'qmaxi']
+    df.loc[df['mdc']==0, 'stat'] = 0
+    df.loc[df['mdc']!=0, 'stat'] = 1
+
+    return df
 
 parser = build_cli_parser()
 busdf, loaddf, gensdf, branchesdf, trans3wdf, trans2wdf, tt_dc_linesdf, vsc_dc_linesdf, factsdf, fixshuntdf, swshuntdf, areasdf, zonesdf, ownersdf = read_psse(parser.parse_args())
@@ -550,20 +574,23 @@ busdf, loaddf, gensdf, branchesdf, trans3wdf, trans2wdf, tt_dc_linesdf, vsc_dc_l
 bus = busdf.loc[busdf['ide']!=4, ["ibus", "name", "baskv", "ide", "area", "zone"]]
 load = loaddf.loc[loaddf['stat']!=0, ["ibus", "loadid", "stat", "area", "zone", "pl", "ql"]]
 gens = gensdf.loc[gensdf['stat']!=0, ["ibus", "machid", "pg", "qg", "qt", "qb", "vs", "ireg", "mbase"]]
-acbrnch = branchesdf.loc[branchesdf['stat']!=0, ["ibus", "jbus", "ckt", "rpu", "xpu", "bpu", "rate1", "rate2", "rate3"]]
-tt_dc_lines = tt_dc_linesdf.loc[tt_dc_linesdf[''], ['ipr', 'ipi']]
-trans2w = trans2wdf.loc[trans2wdf['stat']!=0,["ibus", "jbus", "kbus", "ckt", "cw", "cz", "name", "stat", "vecgrp", "r1_2", "x1_2", "sbase1_2", "wdg1rate1", "wdg1rate2", "wdg1rate3"]]
-trans3wpre = trans3wdf.loc[trans3wdf['stat']!=0,["ibus", "jbus", "kbus", "ckt", "cw", "cz", "name", "stat",  "vecgrp", "r1_2", "x1_2", "sbase1_2", "r2_3", "x2_3", "sbase2_3", "r3_1", "x3_1", "sbase3_1", "wdg1rate1", "wdg1rate2", "wdg1rate3", "wdg2rate1", "wdg2rate2", "wdg2rate3", "wdg3rate1", "wdg3rate2", "wdg3rate3"]]
-trans3w = fix_trans3w(trans3wpre)
+acbrnch = branchesdf.loc[branchesdf['stat']!=0, ["ibus", "jbus", "ckt", "rpu", "xpu", "rate1", "rate2", "rate3"]].rename(columns={'rpu':'r', 'xpu':'x'})
+
+# tt_dc_lines = tt_dc_linesdf.loc[tt_dc_linesdf[''], ['ipr', 'ipi']]
+tt_dc_linesdf = fix_tt_dc(tt_dc_linesdf)
+tt_dc_lines = tt_dc_linesdf.loc[tt_dc_linesdf['stat']!=0, ['ipi', 'ipr', 'pmw']]
+
+trans2w = trans2wdf.loc[trans2wdf['stat']!=0, ["ibus", "jbus", "ckt", "r1_2", "x1_2", "wdg1rate1", "wdg1rate2", "wdg1rate3"]].rename(columns={'r1_2':'r','x1_2':'x', 'wdg1rate1':'rate1', 'wdg1rate2':'rate2', 'wdg1rate3':'rate3'})
+trans3wpre = trans3wdf.loc[trans3wdf['stat']!=0, ["ibus", "jbus", "kbus", "ckt", "cw", "cz", "name", "stat", "vecgrp", "r1_2", "x1_2", "sbase1_2", "r2_3", "x2_3", "sbase2_3", "r3_1", "x3_1", "sbase3_1", "wdg1rate1", "wdg1rate2", "wdg1rate3", "wdg2rate1", "wdg2rate2", "wdg2rate3", "wdg3rate1", "wdg3rate2", "wdg3rate3"]]
+trans3w = fix_trans3w(trans3wpre)[['ibus','jbus','ckt','r', 'x', 'rate1', 'rate2', 'rate3']]
 
 # XXX fix the impedances of 3 winding transformers
 # XXX fix the impedances of 3 winding transformers
 # XXX fix the impedances of 3 winding transformers
-
 
 # all connections
 # creating the lines using branches and transformers and DC lines (what else?)
-
+branches = pd.concat([acbrnch, trans2w, trans3w])
 
 
 
