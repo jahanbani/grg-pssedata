@@ -55,6 +55,14 @@ with open('headers.yaml', 'r') as f:
     except yaml.YAMLError as exc:
         print(exc)
 
+with open('areas.yaml', 'r') as f:
+    try:
+        AREAS = yaml.safe_load(f)
+        INTERNALS = AREAS['ISONE'] + AREAS['NYISO'] + AREAS['PJM'] + AREAS['DUKE'] + AREAS['SC']
+        EXTERNALS = list(set(AREAS['ALLAREAS']) - set(INTERNALS))
+    except yaml.YAMLError as exc:
+        print(exc)
+
 
 LineRequirements = collections.namedtuple('LineRequirements',['line_index','min_values','max_values','section'])
 
@@ -540,6 +548,7 @@ def fix_tt_dc(df):
     df.loc[df['mdc']==1,'pmw']=df.loc[df['mdc']==1,'setvl'] # SETVL is the desired real power demand
     df.loc[df['mdc']==2,'pmw']=df.loc[df['mdc']==2,'setvl'] * df.loc[df['mdc']==2,'vschd'] / 1000  # SETVL is the current in amps (need devide 1000 to convert to MW)
     df.loc[~(df['mdc'].isin([1,2])),'pmw']=0
+    df.loc[df['pmw']<0, 'pmw'] = -1 * df.loc[df['pmw']<0, 'pmw']
 
     # Q min and max for rectifires and inverters
     df.loc[:, 'qminr'] = df['pmw'] * df['anmnr']
@@ -556,6 +565,34 @@ def fix_tt_dc(df):
 
     return df
 
+
+def calc_buscap(allbranches, buson):
+
+    # ########################################################################################### #
+    # calculate capacity of each substation
+    # ########################################################################################### #
+
+    # for ibus
+    subcap = pd.DataFrame()
+    ic = allbranches.groupby(['ibus'])['jbus'].count().reindex(buson['ibus']).fillna(value=0)
+    jc = allbranches.groupby(['jbus'])['ibus'].count().reindex(buson['ibus']).fillna(value=0)
+    ijc = ic + jc
+    ijc.name = 'count'
+    ijc = ijc.reset_index()
+
+    ibus = allbranches.groupby(['ibus'])[['rate2']].agg({'rate2':['sum', 'max']}).reindex(buson['ibus']).fillna(value=0)['rate2']
+    jbus = allbranches.groupby(['jbus'])[['rate2']].agg({'rate2':['sum', 'max']}).reindex(buson['ibus']).fillna(value=0)['rate2']
+
+    subcap['sum'] = ibus['sum'] + jbus['sum']
+    subcap['max'] = np.maximum(ibus['max'], jbus['max'])
+    subcap['cap'] = subcap['sum'] - subcap['max']
+    subcap = subcap.sort_values(by=['cap'], ascending=False)
+    buscap = pd.merge(buson, subcap[['cap']].reset_index(), on='ibus')
+    buscapc = pd.merge(buscap, ijc, on='ibus')
+
+    return buscapc
+
+
 parser = build_cli_parser()
 busdf, loaddf, gensdf, branchesdf, trans3wdf, trans2wdf, tt_dc_linesdf, vsc_dc_linesdf, factsdf, fixshuntdf, swshuntdf, areasdf, zonesdf, ownersdf = read_psse(parser.parse_args())
 
@@ -571,18 +608,29 @@ busdf, loaddf, gensdf, branchesdf, trans3wdf, trans2wdf, tt_dc_linesdf, vsc_dc_l
 #         dfs[inx] = df
 
 # busdf, loaddf, gensdf, branchesdf, trans3wdf, trans2wdf, tt_dc_linesdf, vsc_dc_linesdf, factsdf, fixshuntdf, swshuntdf, areasdf, zonesdf, ownersdf = dfs
-bus = busdf.loc[busdf['ide']!=4, ["ibus", "name", "baskv", "ide", "area", "zone"]]
+busdf.loc[busdf['area'].isin(INTERNALS), 'isin'] = 1
+busdf.loc[~busdf['area'].isin(INTERNALS), 'isin'] = 0
+buson = busdf.loc[busdf['ide']!=4, ["ibus", "name", "baskv", "ide", "area", "zone", "isin"]]
+bus = busdf.loc[:, ["ibus", "name", "baskv", "ide", "area", "zone", "isin"]]
+
 load = loaddf.loc[loaddf['stat']!=0, ["ibus", "loadid", "stat", "area", "zone", "pl", "ql"]]
 gens = gensdf.loc[gensdf['stat']!=0, ["ibus", "machid", "pg", "qg", "qt", "qb", "vs", "ireg", "mbase"]]
 acbrnch = branchesdf.loc[branchesdf['stat']!=0, ["ibus", "jbus", "ckt", "rpu", "xpu", "rate1", "rate2", "rate3"]].rename(columns={'rpu':'r', 'xpu':'x'})
+acbrnch['isac'] = 1
 
 # tt_dc_lines = tt_dc_linesdf.loc[tt_dc_linesdf[''], ['ipr', 'ipi']]
 tt_dc_linesdf = fix_tt_dc(tt_dc_linesdf)
-tt_dc_lines = tt_dc_linesdf.loc[tt_dc_linesdf['stat']!=0, ['ipi', 'ipr', 'pmw']]
+tt_dc_lines = tt_dc_linesdf.loc[tt_dc_linesdf['stat']!=0, ['ipi', 'ipr', 'pmw']].rename(columns={'ipi':'ibus', 'ipr':'jbus', 'pmw':'rate1'})
+tt_dc_lines['rate2'] = tt_dc_lines['rate1']
+tt_dc_lines['rate3'] = tt_dc_lines['rate1']
+tt_dc_lines['ckt'] = tt_dc_lines.index
+tt_dc_lines['isdc'] = 1
 
 trans2w = trans2wdf.loc[trans2wdf['stat']!=0, ["ibus", "jbus", "ckt", "r1_2", "x1_2", "wdg1rate1", "wdg1rate2", "wdg1rate3"]].rename(columns={'r1_2':'r','x1_2':'x', 'wdg1rate1':'rate1', 'wdg1rate2':'rate2', 'wdg1rate3':'rate3'})
+trans2w['is2w'] = 1
 trans3wpre = trans3wdf.loc[trans3wdf['stat']!=0, ["ibus", "jbus", "kbus", "ckt", "cw", "cz", "name", "stat", "vecgrp", "r1_2", "x1_2", "sbase1_2", "r2_3", "x2_3", "sbase2_3", "r3_1", "x3_1", "sbase3_1", "wdg1rate1", "wdg1rate2", "wdg1rate3", "wdg2rate1", "wdg2rate2", "wdg2rate3", "wdg3rate1", "wdg3rate2", "wdg3rate3"]]
 trans3w = fix_trans3w(trans3wpre)[['ibus','jbus','ckt','r', 'x', 'rate1', 'rate2', 'rate3']]
+trans3w['is3w'] = 1
 
 # XXX fix the impedances of 3 winding transformers
 # XXX fix the impedances of 3 winding transformers
@@ -590,10 +638,57 @@ trans3w = fix_trans3w(trans3wpre)[['ibus','jbus','ckt','r', 'x', 'rate1', 'rate2
 
 # all connections
 # creating the lines using branches and transformers and DC lines (what else?)
-branches = pd.concat([acbrnch, trans2w, trans3w])
+abrnch = pd.concat([acbrnch, trans2w, trans3w, tt_dc_lines])
+
+# adding voltage and area to the branches
+allbranches = pd.merge(pd.merge(abrnch, bus, on='ibus', how='left'), bus.rename(columns={'ibus':'jbus'}), on='jbus', suffixes=("_i", "_j"), how='left')
+allbranches.loc[(allbranches['rate1']>=8888) | (allbranches['rate2']>=8888) | (allbranches['rate3']>=8888), ['rate1', 'rate2', 'rate3']] = 0
+
+# sorting branches, the from is always the smaller bus number
+allbranches["fromto"] = tuple(zip(allbranches["ibus"], allbranches["jbus"]))
+allbranches = allbranches.drop(columns=["ibus", "jbus"])
+allbranches["fromto"] = allbranches["fromto"].apply(lambda x: sorted(x))
+allbranches[["ibus", "jbus"]] = pd.DataFrame(allbranches["fromto"].tolist(), index=allbranches.index)
+allbranches = allbranches.drop(columns=["fromto"])
+
+allbrancheson = allbranches.loc[(allbranches['ide_i']!=4) & (allbranches['ide_j']!=4), :]
 
 
+buson.loc[buson['area'].isin(INTERNALS)]
+# find all buses above 345 kV
+bus345 = buson.loc[buson['baskv']>=345]
+
+# ############################################################################################### #
+# tie-lines
+# ############################################################################################### #
+ties = allbrancheson.loc[((allbrancheson['area_i'].isin(INTERNALS)) & ~(allbrancheson['area_j'].isin(INTERNALS))) | (~(allbrancheson['area_i'].isin(INTERNALS)) & (allbrancheson['area_j'].isin(INTERNALS)))]
+border_buses_i = ties.loc[ties['area_i'].isin(INTERNALS), 'ibus']
+border_buses_j = ties.loc[ties['area_j'].isin(INTERNALS), 'jbus']
+border_buses = border_buses_i.tolist() + border_buses_j.tolist()
+
+
+buscapc = calc_buscap(allbranches, buson)
+
+# ############################################################################################### #
+# ############################################################################################### #
+# ############################################################################################### #
+# #######################################Identifying retained buses############################## #
+# ############################################################################################### #
+# ############################################################################################### #
+# ############################################################################################### #
+
+res = {}
+# for nc in [2,3,4,5]:
+for nc in [5]:
+    # for bc in [500, 1000, 1500, 2000, 2500]:
+    for bc in [1000]:
+        select_area = buscapc['area'].isin(INTERNALS)
+        select_basekv = buscapc['baskv'] >= 345
+        select_con = buscapc['count'] > nc
+        select_cap = buscapc['cap'] > bc
+        retbus = buscapc.loc[select_area & select_basekv & select_con & select_cap, 'ibus'].tolist()
+        res[(nc, bc)] =  (len(retbus), len(set(retbus).intersection(border_buses)))
+
+pd.DataFrame(retbus).to_csv('retainedbuses.csv', index=False, header=False)
 
 import ipdb; ipdb.set_trace()
-
-
