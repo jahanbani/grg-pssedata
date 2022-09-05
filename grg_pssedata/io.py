@@ -9,6 +9,7 @@ import collections
 import pandas as pd
 from IPython import embed
 import yaml
+import ipdb
 import numpy as np
 
 from grg_pssedata.struct import Bus
@@ -60,6 +61,8 @@ with open('areas.yaml', 'r') as f:
         AREAS = yaml.safe_load(f)
         INTERNALS = AREAS['ISONE'] + AREAS['NYISO'] + AREAS['PJM'] + AREAS['DUKE'] + AREAS['SC']
         EXTERNALS = list(set(AREAS['ALLAREAS']) - set(INTERNALS))
+        # INTERNALS = list(set(AREAS['ALLAREAS']) - set(EXTERNALS))
+        # EXTERNALS = AREAS['ISONE'] + AREAS['NYISO'] + AREAS['PJM'] + AREAS['DUKE'] + AREAS['SC']
     except yaml.YAMLError as exc:
         print(exc)
 
@@ -642,32 +645,68 @@ abrnch = pd.concat([acbrnch, trans2w, trans3w, tt_dc_lines])
 
 # adding voltage and area to the branches
 allbranches = pd.merge(pd.merge(abrnch, bus, on='ibus', how='left'), bus.rename(columns={'ibus':'jbus'}), on='jbus', suffixes=("_i", "_j"), how='left')
+
+
 allbranches.loc[(allbranches['rate1']>=8888) | (allbranches['rate2']>=8888) | (allbranches['rate3']>=8888), ['rate1', 'rate2', 'rate3']] = 0
 
-# sorting branches, the from is always the smaller bus number
-allbranches["fromto"] = tuple(zip(allbranches["ibus"], allbranches["jbus"]))
-allbranches = allbranches.drop(columns=["ibus", "jbus"])
-allbranches["fromto"] = allbranches["fromto"].apply(lambda x: sorted(x))
-allbranches[["ibus", "jbus"]] = pd.DataFrame(allbranches["fromto"].tolist(), index=allbranches.index)
-allbranches = allbranches.drop(columns=["fromto"])
+# sorting branches, the from is always the smaller bus number; XXX messes up the areas
+# allbranches["fromto"] = tuple(zip(allbranches["ibus"], allbranches["jbus"]))
+# allbranches = allbranches.drop(columns=["ibus", "jbus"])
+# allbranches["fromto"] = allbranches["fromto"].apply(lambda x: sorted(x))
+# allbranches[["ibus", "jbus"]] = pd.DataFrame(allbranches["fromto"].tolist(), index=allbranches.index)
+# allbranches = allbranches.drop(columns=["fromto"])
 
 allbrancheson = allbranches.loc[(allbranches['ide_i']!=4) & (allbranches['ide_j']!=4), :]
 
-
-buson.loc[buson['area'].isin(INTERNALS)]
-# find all buses above 345 kV
-bus345 = buson.loc[buson['baskv']>=345]
-
+# ############################################################################################### #
+# ############################################################################################### #
+# ####################################Calculate substation capacties############################# #
+# ############################################################################################### #
+# ############################################################################################### #
+buscapc = calc_buscap(allbranches, buson)
+# ############################################################################################### #
+# ############################################################################################### #
+# ############################################################################################### #
+# ############################################################################################### #
+# ############################################################################################### #
 # ############################################################################################### #
 # tie-lines
 # ############################################################################################### #
-ties = allbrancheson.loc[((allbrancheson['area_i'].isin(INTERNALS)) & ~(allbrancheson['area_j'].isin(INTERNALS))) | (~(allbrancheson['area_i'].isin(INTERNALS)) & (allbrancheson['area_j'].isin(INTERNALS)))]
-border_buses_i = ties.loc[ties['area_i'].isin(INTERNALS), 'ibus']
-border_buses_j = ties.loc[ties['area_j'].isin(INTERNALS), 'jbus']
-border_buses = border_buses_i.tolist() + border_buses_j.tolist()
+ties = allbrancheson.loc[
+    (
+        (allbrancheson["area_i"].isin(INTERNALS))
+        & ~(allbrancheson["area_j"].isin(INTERNALS))
+    )
+    | (
+        ~(allbrancheson["area_i"].isin(INTERNALS))
+        & (allbrancheson["area_j"].isin(INTERNALS))
+    )
+]
+border_buses_i = ties.loc[ties["area_i"].isin(INTERNALS), "ibus"]
+border_buses_j = ties.loc[ties["area_j"].isin(INTERNALS), "jbus"]
+
+border_buses_tot = border_buses_i.tolist() + border_buses_j.tolist()
+
+border_buses_f = buscapc.loc[buscapc["ibus"].isin(border_buses_tot)]
+border_buses_final = border_buses_f.loc[
+    (border_buses_f["count"] > 5)
+    & (border_buses_f["baskv"] >= 345)
+    & (border_buses_f["cap"] > 1000)
+]
+
+border_buses = (
+    border_buses_final["ibus"].tolist()
+    + ties.loc[(ties["area_i"].isin(INTERNALS)) & (ties["isdc"] == 1), "ibus"].tolist()
+    + ties.loc[(ties["area_j"].isin(INTERNALS)) & (ties["isdc"] == 1), "jbus"].tolist()
+)
+# ############################################################################################### #
+# ############################################################################################### #
+# ############################################################################################### #
 
 
-buscapc = calc_buscap(allbranches, buson)
+# ############################################################################################### #
+# ############################################################################################### #
+# ############################################################################################### #
 
 # ############################################################################################### #
 # ############################################################################################### #
@@ -679,16 +718,51 @@ buscapc = calc_buscap(allbranches, buson)
 
 res = {}
 # for nc in [2,3,4,5]:
-for nc in [5]:
+# for nc in [7]:
+for nc in [2]:
     # for bc in [500, 1000, 1500, 2000, 2500]:
-    for bc in [1000]:
+    # for bc in [7500]:
+    for bc in [500]:
         select_area = buscapc['area'].isin(INTERNALS)
         select_basekv = buscapc['baskv'] >= 345
         select_con = buscapc['count'] > nc
         select_cap = buscapc['cap'] > bc
         retbus = buscapc.loc[select_area & select_basekv & select_con & select_cap, 'ibus'].tolist()
         res[(nc, bc)] =  (len(retbus), len(set(retbus).intersection(border_buses)))
+        print(len(retbus), len(set(retbus).intersection(border_buses)))
 
-pd.DataFrame(retbus).to_csv('retainedbuses.csv', index=False, header=False)
+
+POIs= []
+POIs = [110759, 119194, 119209, 114734, 111134, 110783, 111809, 119077, 113951, 111217, 117314,
+117001, 117301, 113952, 114417, 117496, 119709, 119480, 104127, 111202, 111204, 104079, 100002,
+100086, 100087, 100088, 100098, 107000, 119064, 119389, 123630, 111193, 111133, 110786, 110756,
+128284, 126297, 126294, 125001, 126291, 126281, 126298, 126266, 126287, 126644, 126645, 126304,
+126641, 126353, 126847, 126642, 126643, 126283, 129868, 129421, 129202, 129692, 129341, 129310,
+128835, 129355, 128822, 232012, 206294, 206302, 200017, 200006, 200014, 227900, 232268, 232006,
+232124, 227040, 304463, 304453, 304039, 370635, 371605, 312807, 312719, 314909, 314481,
+]
+
+retainedbuses = list(set(retbus+border_buses+POIs))
+# retainedbuses = list(set(retbus))
+# print(len(list(set(retbus))))
+
+
+# ############################################################################################### #
+# ############################################################################################### #
+# ############################################################################################### #
+# ####################################Writing files############################################## #
+# ############################################################################################### #
+# ############################################################################################### #
+# ############################################################################################### #
+
+pd.DataFrame(retainedbuses).to_csv('retainedbuses.csv', index=False, header=False)
+buscapc.to_csv('allbuses.csv', index=False)
+
+# eliminated buses
+
+
+# go to MATLAB and run the code there
+# The results are written two files:
+# 1) Y_eq.csv which gives us the lines 2) LF.csv which is the load fraction matrix
 
 import ipdb; ipdb.set_trace()
