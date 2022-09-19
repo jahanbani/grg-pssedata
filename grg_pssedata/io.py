@@ -67,6 +67,10 @@ with open('areas.yaml', 'r') as f:
         print(exc)
 
 
+CAPLIM = 500 # 50 MW limit of substations
+KVLIM = 345 # 345 kV lines and above
+CONLIM = 3 # number of connections to a bus
+
 LineRequirements = collections.namedtuple('LineRequirements',['line_index','min_values','max_values','section'])
 
 print_err = functools.partial(print, file=sys.stderr)
@@ -295,6 +299,7 @@ def parse_psse_case_lines(lines):
 
         transformers.append(sum(t,[]))
         transformer_index += 1
+
     print_err('parsed {} transformers'.format(len(transformers)))
 
     if parse_line(lines[line_index])[0][0].strip() != psse_record_terminus:
@@ -595,9 +600,25 @@ def calc_buscap(allbranches, buson):
 
     return buscapc
 
-
+# call the functions
 parser = build_cli_parser()
-busdf, loaddf, gensdf, branchesdf, trans3wdf, trans2wdf, tt_dc_linesdf, vsc_dc_linesdf, factsdf, fixshuntdf, swshuntdf, areasdf, zonesdf, ownersdf = read_psse(parser.parse_args())
+(
+    busdf,
+    loaddf,
+    gensdf,
+    branchesdf,
+    trans3wdf,
+    trans2wdf,
+    tt_dc_linesdf,
+    vsc_dc_linesdf,
+    factsdf,
+    fixshuntdf,
+    swshuntdf,
+    areasdf,
+    zonesdf,
+    ownersdf,
+) = read_psse(parser.parse_args())
+
 
 # take in-service elements only
 # for 3-winding transformers: 0: all out 1: all in 2: only 2 is out 3: only 3 is out 4: only 1 is out
@@ -611,29 +632,88 @@ busdf, loaddf, gensdf, branchesdf, trans3wdf, trans2wdf, tt_dc_linesdf, vsc_dc_l
 #         dfs[inx] = df
 
 # busdf, loaddf, gensdf, branchesdf, trans3wdf, trans2wdf, tt_dc_linesdf, vsc_dc_linesdf, factsdf, fixshuntdf, swshuntdf, areasdf, zonesdf, ownersdf = dfs
-busdf.loc[busdf['area'].isin(INTERNALS), 'isin'] = 1
-busdf.loc[~busdf['area'].isin(INTERNALS), 'isin'] = 0
-buson = busdf.loc[busdf['ide']!=4, ["ibus", "name", "baskv", "ide", "area", "zone", "isin"]]
+
+# Post Processings:
+
+busdf.loc[busdf["area"].isin(INTERNALS), "isin"] = 1
+busdf.loc[~busdf["area"].isin(INTERNALS), "isin"] = 0
+buson = busdf.loc[
+    busdf["ide"] != 4, ["ibus", "name", "baskv", "ide", "area", "zone", "isin"]
+]
 bus = busdf.loc[:, ["ibus", "name", "baskv", "ide", "area", "zone", "isin"]]
 
-load = loaddf.loc[loaddf['stat']!=0, ["ibus", "loadid", "stat", "area", "zone", "pl", "ql"]]
-gens = gensdf.loc[gensdf['stat']!=0, ["ibus", "machid", "pg", "qg", "qt", "qb", "vs", "ireg", "mbase"]]
-acbrnch = branchesdf.loc[branchesdf['stat']!=0, ["ibus", "jbus", "ckt", "rpu", "xpu", "rate1", "rate2", "rate3"]].rename(columns={'rpu':'r', 'xpu':'x'})
-acbrnch['isac'] = 1
+load = loaddf.loc[
+    loaddf["stat"] != 0, ["ibus", "loadid", "stat", "area", "zone", "pl", "ql"]
+]
+gens = gensdf.loc[
+    gensdf["stat"] != 0,
+    ["ibus", "machid", "pg", "qg", "qt", "qb", "vs", "ireg", "mbase"],
+]
+acbrnch = branchesdf.loc[
+    branchesdf["stat"] != 0,
+    ["ibus", "jbus", "ckt", "rpu", "xpu", "rate1", "rate2", "rate3"],
+].rename(columns={"rpu": "r", "xpu": "x"})
+acbrnch["isac"] = 1
 
 # tt_dc_lines = tt_dc_linesdf.loc[tt_dc_linesdf[''], ['ipr', 'ipi']]
 tt_dc_linesdf = fix_tt_dc(tt_dc_linesdf)
-tt_dc_lines = tt_dc_linesdf.loc[tt_dc_linesdf['stat']!=0, ['ipi', 'ipr', 'pmw']].rename(columns={'ipi':'ibus', 'ipr':'jbus', 'pmw':'rate1'})
-tt_dc_lines['rate2'] = tt_dc_lines['rate1']
-tt_dc_lines['rate3'] = tt_dc_lines['rate1']
-tt_dc_lines['ckt'] = tt_dc_lines.index
-tt_dc_lines['isdc'] = 1
+tt_dc_lines = tt_dc_linesdf.loc[
+    tt_dc_linesdf["stat"] != 0, ["ipi", "ipr", "pmw"]
+].rename(columns={"ipi": "ibus", "ipr": "jbus", "pmw": "rate1"})
+tt_dc_lines["rate2"] = tt_dc_lines["rate1"]
+tt_dc_lines["rate3"] = tt_dc_lines["rate1"]
+tt_dc_lines["ckt"] = tt_dc_lines.index
+tt_dc_lines["isdc"] = 1
 
-trans2w = trans2wdf.loc[trans2wdf['stat']!=0, ["ibus", "jbus", "ckt", "r1_2", "x1_2", "wdg1rate1", "wdg1rate2", "wdg1rate3"]].rename(columns={'r1_2':'r','x1_2':'x', 'wdg1rate1':'rate1', 'wdg1rate2':'rate2', 'wdg1rate3':'rate3'})
-trans2w['is2w'] = 1
-trans3wpre = trans3wdf.loc[trans3wdf['stat']!=0, ["ibus", "jbus", "kbus", "ckt", "cw", "cz", "name", "stat", "vecgrp", "r1_2", "x1_2", "sbase1_2", "r2_3", "x2_3", "sbase2_3", "r3_1", "x3_1", "sbase3_1", "wdg1rate1", "wdg1rate2", "wdg1rate3", "wdg2rate1", "wdg2rate2", "wdg2rate3", "wdg3rate1", "wdg3rate2", "wdg3rate3"]]
-trans3w = fix_trans3w(trans3wpre)[['ibus','jbus','ckt','r', 'x', 'rate1', 'rate2', 'rate3']]
-trans3w['is3w'] = 1
+trans2w = trans2wdf.loc[
+    trans2wdf["stat"] != 0,
+    ["ibus", "jbus", "ckt", "r1_2", "x1_2", "wdg1rate1", "wdg1rate2", "wdg1rate3"],
+].rename(
+    columns={
+        "r1_2": "r",
+        "x1_2": "x",
+        "wdg1rate1": "rate1",
+        "wdg1rate2": "rate2",
+        "wdg1rate3": "rate3",
+    }
+)
+trans2w["is2w"] = 1
+trans3wpre = trans3wdf.loc[
+    trans3wdf["stat"] != 0,
+    [
+        "ibus",
+        "jbus",
+        "kbus",
+        "ckt",
+        "cw",
+        "cz",
+        "name",
+        "stat",
+        "vecgrp",
+        "r1_2",
+        "x1_2",
+        "sbase1_2",
+        "r2_3",
+        "x2_3",
+        "sbase2_3",
+        "r3_1",
+        "x3_1",
+        "sbase3_1",
+        "wdg1rate1",
+        "wdg1rate2",
+        "wdg1rate3",
+        "wdg2rate1",
+        "wdg2rate2",
+        "wdg2rate3",
+        "wdg3rate1",
+        "wdg3rate2",
+        "wdg3rate3",
+    ],
+]
+trans3w = fix_trans3w(trans3wpre)[
+    ["ibus", "jbus", "ckt", "r", "x", "rate1", "rate2", "rate3"]
+]
+trans3w["is3w"] = 1
 
 # XXX fix the impedances of 3 winding transformers
 # XXX fix the impedances of 3 winding transformers
@@ -644,10 +724,22 @@ trans3w['is3w'] = 1
 abrnch = pd.concat([acbrnch, trans2w, trans3w, tt_dc_lines])
 
 # adding voltage and area to the branches
-allbranches = pd.merge(pd.merge(abrnch, bus, on='ibus', how='left'), bus.rename(columns={'ibus':'jbus'}), on='jbus', suffixes=("_i", "_j"), how='left')
+allbranches = pd.merge(
+    pd.merge(abrnch, bus, on="ibus", how="left"),
+    bus.rename(columns={"ibus": "jbus"}),
+    on="jbus",
+    suffixes=("_i", "_j"),
+    how="left",
+)
 
 
-allbranches.loc[(allbranches['rate1']>=8888) | (allbranches['rate2']>=8888) | (allbranches['rate3']>=8888), ['rate1', 'rate2', 'rate3']] = 0
+# fixing the ratings that are unreasonably large
+allbranches.loc[
+    (allbranches["rate1"] >= 8888)
+    | (allbranches["rate2"] >= 8888)
+    | (allbranches["rate3"] >= 8888),
+    ["rate1", "rate2", "rate3"],
+] = 0
 
 # sorting branches, the from is always the smaller bus number; XXX messes up the areas
 # allbranches["fromto"] = tuple(zip(allbranches["ibus"], allbranches["jbus"]))
@@ -656,7 +748,9 @@ allbranches.loc[(allbranches['rate1']>=8888) | (allbranches['rate2']>=8888) | (a
 # allbranches[["ibus", "jbus"]] = pd.DataFrame(allbranches["fromto"].tolist(), index=allbranches.index)
 # allbranches = allbranches.drop(columns=["fromto"])
 
-allbrancheson = allbranches.loc[(allbranches['ide_i']!=4) & (allbranches['ide_j']!=4), :]
+allbrancheson = allbranches.loc[
+    (allbranches["ide_i"] != 4) & (allbranches["ide_j"] != 4), :
+]
 
 # ############################################################################################### #
 # ############################################################################################### #
@@ -689,9 +783,9 @@ border_buses_tot = border_buses_i.tolist() + border_buses_j.tolist()
 
 border_buses_f = buscapc.loc[buscapc["ibus"].isin(border_buses_tot)]
 border_buses_final = border_buses_f.loc[
-    (border_buses_f["count"] > 5)
-    & (border_buses_f["baskv"] >= 345)
-    & (border_buses_f["cap"] > 1000)
+    (border_buses_f["count"] > CONLIM)
+    & (border_buses_f["baskv"] >= KVLIM)
+    & (border_buses_f["cap"] > CAPLIM)
 ]
 
 border_buses = (
@@ -699,6 +793,23 @@ border_buses = (
     + ties.loc[(ties["area_i"].isin(INTERNALS)) & (ties["isdc"] == 1), "ibus"].tolist()
     + ties.loc[(ties["area_j"].isin(INTERNALS)) & (ties["isdc"] == 1), "jbus"].tolist()
 )
+# border and adjacent dataframe
+badf = allbrancheson.loc[
+    (allbrancheson["ibus"].isin(border_buses))
+    | (allbrancheson["jbus"].isin(border_buses)),
+    :,
+]
+badf_i = badf.loc[badf['area_i'].isin(INTERNALS), 'ibus'].tolist()
+badf_j = badf.loc[badf['area_j'].isin(INTERNALS), 'jbus'].tolist()
+
+border_buses_adjacent = badf_i + badf_j
+
+            # ["ibus", "jbus"],
+        # ].values.flatten()
+    # )
+# )
+
+
 # ############################################################################################### #
 # ############################################################################################### #
 # ############################################################################################### #
@@ -719,33 +830,113 @@ border_buses = (
 res = {}
 # for nc in [2,3,4,5]:
 # for nc in [7]:
-for nc in [2]:
+for nc in [CONLIM]:
     # for bc in [500, 1000, 1500, 2000, 2500]:
     # for bc in [7500]:
-    for bc in [500]:
-        select_area = buscapc['area'].isin(INTERNALS)
-        select_basekv = buscapc['baskv'] >= 345
-        select_con = buscapc['count'] > nc
-        select_cap = buscapc['cap'] > bc
-        retbus = buscapc.loc[select_area & select_basekv & select_con & select_cap, 'ibus'].tolist()
-        res[(nc, bc)] =  (len(retbus), len(set(retbus).intersection(border_buses)))
+    for bc in [CAPLIM]:
+        select_area = buscapc["area"].isin(INTERNALS)
+        select_basekv = buscapc["baskv"] >= KVLIM
+        select_con = buscapc["count"] > nc
+        select_cap = buscapc["cap"] > bc
+        retbus = buscapc.loc[
+            select_area & select_basekv & select_con & select_cap, "ibus"
+        ].tolist()
+        res[(nc, bc)] = (len(retbus), len(set(retbus).intersection(border_buses)))
         print(len(retbus), len(set(retbus).intersection(border_buses)))
 
 
-POIs= []
-POIs = [110759, 119194, 119209, 114734, 111134, 110783, 111809, 119077, 113951, 111217, 117314,
-117001, 117301, 113952, 114417, 117496, 119709, 119480, 104127, 111202, 111204, 104079, 100002,
-100086, 100087, 100088, 100098, 107000, 119064, 119389, 123630, 111193, 111133, 110786, 110756,
-128284, 126297, 126294, 125001, 126291, 126281, 126298, 126266, 126287, 126644, 126645, 126304,
-126641, 126353, 126847, 126642, 126643, 126283, 129868, 129421, 129202, 129692, 129341, 129310,
-128835, 129355, 128822, 232012, 206294, 206302, 200017, 200006, 200014, 227900, 232268, 232006,
-232124, 227040, 304463, 304453, 304039, 370635, 371605, 312807, 312719, 314909, 314481,
+POIs = []
+POIs = [
+    110759,
+    119194,
+    119209,
+    114734,
+    111134,
+    110783,
+    111809,
+    119077,
+    113951,
+    111217,
+    117314,
+    117001,
+    117301,
+    113952,
+    114417,
+    117496,
+    119709,
+    119480,
+    104127,
+    111202,
+    111204,
+    104079,
+    100002,
+    100086,
+    100087,
+    100088,
+    100098,
+    107000,
+    119064,
+    119389,
+    123630,
+    111193,
+    111133,
+    110786,
+    110756,
+    128284,
+    126297,
+    126294,
+    125001,
+    126291,
+    126281,
+    126298,
+    126266,
+    126287,
+    126644,
+    126645,
+    126304,
+    126641,
+    126353,
+    126847,
+    126642,
+    126643,
+    126283,
+    129868,
+    129421,
+    129202,
+    129692,
+    129341,
+    129310,
+    128835,
+    129355,
+    128822,
+    232012,
+    206294,
+    206302,
+    200017,
+    200006,
+    200014,
+    227900,
+    232268,
+    232006,
+    232124,
+    227040,
+    304463,
+    304453,
+    304039,
+    370635,
+    371605,
+    312807,
+    312719,
+    314909,
+    314481,
 ]
-
-retainedbuses = list(set(retbus+border_buses+POIs))
+myRETBUSES = [136153, 136151, 136152, 131157, 136150, 136189  # one line
+              ]
+retainedbuses = list(set(retbus + border_buses_adjacent + POIs + myRETBUSES))
 # retainedbuses = list(set(retbus))
 # print(len(list(set(retbus))))
 
+print(f"total of retained buses is {len(retainedbuses)}")
 
 # ############################################################################################### #
 # ############################################################################################### #
@@ -755,8 +946,10 @@ retainedbuses = list(set(retbus+border_buses+POIs))
 # ############################################################################################### #
 # ############################################################################################### #
 
-pd.DataFrame(retainedbuses).to_csv('retainedbuses.csv', index=False, header=False)
-buscapc.to_csv('allbuses.csv', index=False)
+pd.DataFrame(retainedbuses).to_csv(
+    "../matpower7.1/retainedbuses.csv", index=False, header=False
+)
+buscapc.to_csv("allbuses.csv", index=False)
 
 # eliminated buses
 
@@ -765,4 +958,6 @@ buscapc.to_csv('allbuses.csv', index=False)
 # The results are written two files:
 # 1) Y_eq.csv which gives us the lines 2) LF.csv which is the load fraction matrix
 
-import ipdb; ipdb.set_trace()
+import ipdb
+
+ipdb.set_trace()
