@@ -619,7 +619,6 @@ parser = build_cli_parser()
     ownersdf,
 ) = read_psse(parser.parse_args())
 
-
 # take in-service elements only
 # for 3-winding transformers: 0: all out 1: all in 2: only 2 is out 3: only 3 is out 4: only 1 is out
 # dfs = [busdf, loaddf, gensdf, branchesdf, trans3wdf, trans2wdf, tt_dc_linesdf, vsc_dc_linesdf, factsdf, fixshuntdf, swshuntdf, areasdf, zonesdf, ownersdf]
@@ -633,8 +632,16 @@ parser = build_cli_parser()
 
 # busdf, loaddf, gensdf, branchesdf, trans3wdf, trans2wdf, tt_dc_linesdf, vsc_dc_linesdf, factsdf, fixshuntdf, swshuntdf, areasdf, zonesdf, ownersdf = dfs
 
-# Post Processings:
+# ############################################################################################### #
+# ############################################################################################### #
+# ############################################################################################### #
+# ######################Selection of Retained Buses############################################## #
+# ############################################################################################### #
+# ############################################################################################### #
+# ############################################################################################### #
 
+
+# Post Processings:
 busdf.loc[busdf["area"].isin(INTERNALS), "isin"] = 1
 busdf.loc[~busdf["area"].isin(INTERNALS), "isin"] = 0
 buson = busdf.loc[
@@ -758,13 +765,9 @@ allbrancheson = allbranches.loc[
 # ############################################################################################### #
 # ############################################################################################### #
 buscapc = calc_buscap(allbranches, buson)
+
 # ############################################################################################### #
-# ############################################################################################### #
-# ############################################################################################### #
-# ############################################################################################### #
-# ############################################################################################### #
-# ############################################################################################### #
-# tie-lines
+# #####################################tie-lines################################################# #
 # ############################################################################################### #
 ties = allbrancheson.loc[
     (
@@ -790,26 +793,28 @@ border_buses_final = border_buses_f.loc[
 
 border_buses = (
     border_buses_final["ibus"].tolist()
-    + ties.loc[(ties["area_i"].isin(INTERNALS)) & (ties["isdc"] == 1), "ibus"].tolist()
-    + ties.loc[(ties["area_j"].isin(INTERNALS)) & (ties["isdc"] == 1), "jbus"].tolist()
+    # + ties.loc[(ties["area_i"].isin(INTERNALS)) & (ties["isdc"] == 1), "ibus"].tolist()
+    # + ties.loc[(ties["area_j"].isin(INTERNALS)) & (ties["isdc"] == 1), "jbus"].tolist()
 )
-# border and adjacent dataframe
+
+# ############################################################################################### #
+# ############################################################################################### #
+# ############################################################################################### #
+# XXX this gives a lot of lines and buses; we may need to filter them
+# border and adjacent dataframe Note that this is for the internal areas only
 badf = allbrancheson.loc[
-    (allbrancheson["ibus"].isin(border_buses))
-    | (allbrancheson["jbus"].isin(border_buses)),
+    (allbrancheson["area_i"] != allbrancheson["area_j"])
+    & (allbrancheson["area_i"].isin(INTERNALS))
+    & (allbrancheson["area_j"].isin(INTERNALS))
+    & (allbrancheson["baskv_i"] > 115)
+    & (allbrancheson["baskv_j"] > 115)
+    & (allbrancheson["isdc"] == 0),
     :,
 ]
-badf_i = badf.loc[badf['area_i'].isin(INTERNALS), 'ibus'].tolist()
-badf_j = badf.loc[badf['area_j'].isin(INTERNALS), 'jbus'].tolist()
+badf_i = badf.loc[:, "ibus"].tolist()
+badf_j = badf.loc[:, "jbus"].tolist()
 
 border_buses_adjacent = badf_i + badf_j
-
-            # ["ibus", "jbus"],
-        # ].values.flatten()
-    # )
-# )
-
-
 # ############################################################################################### #
 # ############################################################################################### #
 # ############################################################################################### #
@@ -930,9 +935,69 @@ POIs = [
     314909,
     314481,
 ]
-myRETBUSES = [136153, 136151, 136152, 131157, 136150, 136189  # one line
-              ]
-retainedbuses = list(set(retbus + border_buses_adjacent + POIs + myRETBUSES))
+myRETBUSES = [
+    [147827, 147828, 147833],  # 765 kV NYISO 5115 MW
+    [114063, 104135, 104128],  # 345 kV ISO NE 2550 MW
+    [243209, 247133, 243239],  # 765 kV PJM  6330 MW Area 205
+    [304183, 314935, 314940, 314936, 314945],  # 500 kV SC
+]
+
+retlines = pd.DataFrame([(k[0], k[1]) for k in myRETBUSES], columns=["ibus", "jbus"])
+
+badf.to_csv("internaltielines.csv", index=False)
+
+
+# ############################################################################################### #
+# ############################################################################################### #
+# #####################################Generation Buses########################################## #
+# ############################################################################################### #
+# ############################################################################################### #
+# note that some generators are directly connectedto buses without a transformer
+gensarea = pd.merge(
+    gens[["ibus", "mbase"]], buscapc[["ibus", "area"]], on="ibus", how="left"
+)
+# all gen buses (this will be low-side of the transformers)
+GENCAPTHD = 100
+gens100mw = gensarea.loc[
+    (gensarea["area"].isin(INTERNALS)) & (gensarea["mbase"] > GENCAPTHD), :
+]
+gensbuses = gens100mw.loc[:, "ibus"].tolist()
+
+# adding voltage base to buses
+t2w = trans2wdf[["ibus", "jbus"]]
+t2w = pd.merge(
+    pd.merge(t2w, buscapc[["ibus", "baskv"]], on="ibus").rename(
+        columns={"baskv": "kvi"}
+    ),
+    buscapc[["ibus", "baskv"]].rename(columns={"ibus": "jbus"}),
+    on="jbus",
+).rename(columns={"baskv": "kvj"})
+
+t2w.loc[:, ["geni", "genj", "igj"]] = 0
+t2w.loc[t2w["ibus"].isin(gensbuses), "geni"] = 1
+t2w.loc[t2w["jbus"].isin(gensbuses), "genj"] = 1
+t2w.loc[t2w["kvi"] >= t2w["kvj"], "igj"] = 1
+highside = t2w.loc[(t2w["genj"] == 1) & (t2w["igj"] == 1), "ibus"].tolist()
+lowside = t2w.loc[(t2w["genj"] == 1) & (t2w["igj"] == 1), "jbus"].tolist()
+
+gensbusesfinal = list(set(gensbuses) - set(lowside)) + highside
+
+# ############################################################################################### #
+# ############################################################################################### #
+# ###################################All Retained Buses########################################## #
+# ############################################################################################### #
+# ############################################################################################### #
+
+retainedbuses = list(
+    set(
+        gensbusesfinal
+        + retbus
+        + POIs
+        + sum(myRETBUSES, [])
+        + border_buses
+        + border_buses_adjacent
+    )
+)
 # retainedbuses = list(set(retbus))
 # print(len(list(set(retbus))))
 
