@@ -640,7 +640,6 @@ parser = build_cli_parser()
 # ############################################################################################### #
 # ############################################################################################### #
 
-
 # Post Processings:
 busdf.loc[busdf["area"].isin(INTERNALS), "isin"] = 1
 busdf.loc[~busdf["area"].isin(INTERNALS), "isin"] = 0
@@ -759,6 +758,7 @@ allbrancheson = allbranches.loc[
     (allbranches["ide_i"] != 4) & (allbranches["ide_j"] != 4), :
 ]
 
+
 # ############################################################################################### #
 # ############################################################################################### #
 # ####################################Calculate substation capacties############################# #
@@ -784,13 +784,13 @@ border_buses_j = ties.loc[ties["area_j"].isin(INTERNALS), "jbus"]
 
 border_buses_tot = border_buses_i.tolist() + border_buses_j.tolist()
 
+# here we are filtering the border buses, should we?
 border_buses_f = buscapc.loc[buscapc["ibus"].isin(border_buses_tot)]
 border_buses_final = border_buses_f.loc[
     (border_buses_f["count"] > CONLIM)
     & (border_buses_f["baskv"] >= KVLIM)
     & (border_buses_f["cap"] > CAPLIM)
 ]
-
 border_buses = (
     border_buses_final["ibus"].tolist()
     # + ties.loc[(ties["area_i"].isin(INTERNALS)) & (ties["isdc"] == 1), "ibus"].tolist()
@@ -815,6 +815,9 @@ badf_i = badf.loc[:, "ibus"].tolist()
 badf_j = badf.loc[:, "jbus"].tolist()
 
 border_buses_adjacent = badf_i + badf_j
+
+badf.to_csv("internaltielines.csv", index=False)
+
 # ############################################################################################### #
 # ############################################################################################### #
 # ############################################################################################### #
@@ -829,8 +832,65 @@ border_buses_adjacent = badf_i + badf_j
 # ############################################################################################### #
 # #######################################Identifying retained buses############################## #
 # ############################################################################################### #
+# retained buses are the followings:
+# 1- based on their capacities, connected lines, voltage kV, etc
+# 2- internal tie-lines (disabled for now)
+# 3- POIs
+# 4- Some lines I have manually selected (bothe ends and all buses connected to one end)
+# 5- some lines I am automatically selecting based on kv etc and I keep their buses at one terminal
+# 6- generator buses (high side of the transformer)
+# 7- PAR buses - I am going to add this, both PAR terminals and all connected buses to one terminal
 # ############################################################################################### #
 # ############################################################################################### #
+
+# ############################################################################################### #
+# ############################################################################################### #
+# ##############Identifying PARs################################################################# #
+# ############################################################################################### #
+# ############################################################################################### #
+
+PARs = trans2wdf.loc[(trans2wdf["cod1"].isin([-3, 3])) & (trans2wdf["stat"]) == 1]
+
+# adding voltage and area to the branches
+PARskV = pd.merge(
+    pd.merge(PARs, bus[["ibus", "area", "baskv"]], on="ibus", how="left"),
+    bus[["ibus", "area", "baskv"]].rename(columns={"ibus": "jbus"}),
+    on="jbus",
+    suffixes=("_i", "_j"),
+    how="left",
+)
+# fileter PARs
+PARsSel = PARskV.loc[
+    (PARskV["area_i"] == PARskV["area_j"])
+    & (PARskV["area_i"].isin(INTERNALS))
+    & (PARskV["baskv_i"] > 100)
+]
+
+# we need to remove the PARs from the branches at the end
+PARsSel.drop(columns=['area_i', 'area_j', 'baskv_i', 'baskv_j']).to_excel('PARsRetained.xlsx', index=False)
+
+buses2keep = PARsSel["ibus"]
+
+PARsOneEnd = allbrancheson.loc[
+    (allbrancheson["ibus"].isin(buses2keep)) | (allbrancheson["jbus"].isin(buses2keep)),
+    ["ibus", "jbus"],
+]
+
+PARbuses2ret = list(
+    set(
+        PARsSel["ibus"].tolist()
+        + PARsSel["jbus"].tolist()
+        + PARsOneEnd["ibus"].tolist()
+        + PARsOneEnd["jbus"].tolist()
+    )
+)
+
+# ############################################################################################### #
+# ############################################################################################### #
+# ##############Identifying PARs################################################################# #
+# ############################################################################################### #
+# ############################################################################################### #
+
 
 res = {}
 # for nc in [2,3,4,5]:
@@ -851,89 +911,12 @@ for nc in [CONLIM]:
 
 
 POIs = []
-POIs = [
-    110759,
-    119194,
-    119209,
-    114734,
-    111134,
-    110783,
-    111809,
-    119077,
-    113951,
-    111217,
-    117314,
-    117001,
-    117301,
-    113952,
-    114417,
-    117496,
-    119709,
-    119480,
-    104127,
-    111202,
-    111204,
-    104079,
-    100002,
-    100086,
-    100087,
-    100088,
-    100098,
-    107000,
-    119064,
-    119389,
-    123630,
-    111193,
-    111133,
-    110786,
-    110756,
-    128284,
-    126297,
-    126294,
-    125001,
-    126291,
-    126281,
-    126298,
-    126266,
-    126287,
-    126644,
-    126645,
-    126304,
-    126641,
-    126353,
-    126847,
-    126642,
-    126643,
-    126283,
-    129868,
-    129421,
-    129202,
-    129692,
-    129341,
-    129310,
-    128835,
-    129355,
-    128822,
-    232012,
-    206294,
-    206302,
-    200017,
-    200006,
-    200014,
-    227900,
-    232268,
-    232006,
-    232124,
-    227040,
-    304463,
-    304453,
-    304039,
-    370635,
-    371605,
-    312807,
-    312719,
-    314909,
-    314481,
+POIs = [ 110759, 119194, 119209, 114734, 111134, 110783, 111809, 119077, 113951, 111217, 117314, 117001, 117301,
+    113952, 114417, 117496, 119709, 119480, 104127, 111202, 111204, 104079, 100002, 100086, 100087, 100088, 100098, 107000, 119064,
+    119389, 123630, 111193, 111133, 110786, 110756, 128284, 126297, 126294, 125001, 126291, 126281, 126298, 126266, 126287, 126644, 126645, 126304,
+    126641, 126353, 126847, 126642, 126643, 126283, 129868, 129421, 129202, 129692,
+    129341, 129310, 128835, 129355, 128822, 232012, 206294, 206302, 200017, 200006, 200014, 227900,
+    232268, 232006, 232124, 227040, 304463, 304453, 304039, 370635, 371605, 312807, 312719, 314909, 314481,
 ]
 myRETBUSES = [
     [147827, 147828, 147833],  # 765 kV NYISO 5115 MW
@@ -942,10 +925,38 @@ myRETBUSES = [
     [304183, 314935, 314940, 314936, 314945],  # 500 kV SC
 ]
 
+specretlines = sum(myRETBUSES, []) # specific retained lines
+
 retlines = pd.DataFrame([(k[0], k[1]) for k in myRETBUSES], columns=["ibus", "jbus"])
 
-badf.to_csv("internaltielines.csv", index=False)
+intretlines = allbrancheson.loc[
+    (allbrancheson["baskv_i"] == allbrancheson["baskv_j"])  # no transformers
+    & (allbrancheson["area_i"] == allbrancheson["area_j"])  # in one area
+    & (allbrancheson["baskv_i"] > 200)  # above 200 kv
+    & (allbrancheson["rate1"] > 1000)  # rate > 200 MW
+    & (allbrancheson["rate1"] < 3000)  # remove inaccurate data
+    & (allbrancheson["isac"] == 1)  # only ac lines
+    & (allbrancheson["isin_i"] == 1)  # not outside study area
+]
+allintretlines = pd.concat([intretlines[['ibus','jbus']],retlines])
+allintretlines.to_csv("intretlines.csv")
 
+# take one end of the linse
+buses2keep = intretlines["ibus"].tolist()
+
+# find connecting buses
+intretlinesoneend = allbrancheson.loc[
+    (allbrancheson["ibus"].isin(buses2keep)) | (allbrancheson["jbus"].isin(buses2keep)),
+    ["ibus", "jbus"],
+]
+intretlinebuses2ret = list(
+    set(
+        intretlinesoneend["ibus"].tolist()
+        + intretlinesoneend["jbus"].tolist()
+        + intretlines["ibus"].tolist()
+        + intretlines["jbus"].tolist()
+    )
+)
 
 # ############################################################################################### #
 # ############################################################################################### #
@@ -990,19 +1001,28 @@ gensbusesfinal = list(set(gensbuses) - set(lowside)) + highside
 
 retainedbuses = list(
     set(
-        gensbusesfinal
-        + retbus
-        + POIs
-        + sum(myRETBUSES, [])
-        + border_buses
+        gensbusesfinal  # all generator buses
+        + retbus  # based on the capacity and voltage
+        + POIs  # the POIs
+        + specretlines  # specific lines I am retaining; really don't need though
+        + intretlinebuses2ret  # internal lines to retain
+        + border_buses # this is before filtering; all boundry buses
         + border_buses_adjacent
+        + PARbuses2ret  # PAR buses and attached lines
     )
 )
+print(f'generator buses {len(gensbusesfinal)}')
+print(f'retained buses based on capacity {len(retbus)}')
+print(f'POIs {len(POIs)}')
+print(f'specific retained lines {len(specretlines)}')
+print(f'internal retained lines {len(intretlinebuses2ret)}')
+print(f'boundry buses {len(border_buses_tot)}')
+print(f'buses for PARs {len(PARbuses2ret)}')
+
 # retainedbuses = list(set(retbus))
 # print(len(list(set(retbus))))
 
 print(f"total of retained buses is {len(retainedbuses)}")
-
 # ############################################################################################### #
 # ############################################################################################### #
 # ############################################################################################### #
