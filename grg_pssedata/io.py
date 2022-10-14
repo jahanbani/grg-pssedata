@@ -863,7 +863,7 @@ PARskV = pd.merge(
 PARsSel = PARskV.loc[
     (PARskV["area_i"] == PARskV["area_j"])
     & (PARskV["area_i"].isin(INTERNALS))
-    & (PARskV["baskv_i"] > 100)
+    & (PARskV["baskv_i"] > 200)
 ]
 
 # we need to remove the PARs from the branches at the end
@@ -1007,7 +1007,7 @@ retainedbuses = list(
         + specretlines  # specific lines I am retaining; really don't need though
         + intretlinebuses2ret  # internal lines to retain
         + border_buses # this is before filtering; all boundry buses
-        + border_buses_adjacent
+        # + border_buses_adjacent
         + PARbuses2ret  # PAR buses and attached lines
     )
 )
