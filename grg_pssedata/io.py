@@ -863,7 +863,7 @@ PARskV = pd.merge(
 PARsSel = PARskV.loc[
     (PARskV["area_i"] == PARskV["area_j"])
     & (PARskV["area_i"].isin(INTERNALS))
-    & (PARskV["baskv_i"] > 200)
+    & (PARskV["baskv_i"] > 137)
 ]
 
 # we need to remove the PARs from the branches at the end
@@ -923,6 +923,7 @@ myRETBUSES = [
     [114063, 104135, 104128],  # 345 kV ISO NE 2550 MW
     [243209, 247133, 243239],  # 765 kV PJM  6330 MW Area 205
     [304183, 314935, 314940, 314936, 314945],  # 500 kV SC
+    [270730, 270928, 270716, 272794], # this is the problematic line in area 222
 ]
 
 specretlines = sum(myRETBUSES, []) # specific retained lines
@@ -932,8 +933,8 @@ retlines = pd.DataFrame([(k[0], k[1]) for k in myRETBUSES], columns=["ibus", "jb
 intretlines = allbrancheson.loc[
     (allbrancheson["baskv_i"] == allbrancheson["baskv_j"])  # no transformers
     & (allbrancheson["area_i"] == allbrancheson["area_j"])  # in one area
-    & (allbrancheson["baskv_i"] > 200)  # above 200 kv
-    & (allbrancheson["rate1"] > 1000)  # rate > 200 MW
+    & (allbrancheson["baskv_i"] > 300)  # above 200 kv
+    & (allbrancheson["rate1"] > 2000)  # rate > 200 MW
     & (allbrancheson["rate1"] < 3000)  # remove inaccurate data
     & (allbrancheson["isac"] == 1)  # only ac lines
     & (allbrancheson["isin_i"] == 1)  # not outside study area
@@ -968,7 +969,7 @@ gensarea = pd.merge(
     gens[["ibus", "mbase"]], buscapc[["ibus", "area"]], on="ibus", how="left"
 )
 # all gen buses (this will be low-side of the transformers)
-GENCAPTHD = 100
+GENCAPTHD = 500
 gens100mw = gensarea.loc[
     (gensarea["area"].isin(INTERNALS)) & (gensarea["mbase"] > GENCAPTHD), :
 ]
@@ -1004,11 +1005,11 @@ retainedbuses = list(
         gensbusesfinal  # all generator buses
         + retbus  # based on the capacity and voltage
         + POIs  # the POIs
-        + specretlines  # specific lines I am retaining; really don't need though
-        + intretlinebuses2ret  # internal lines to retain
-        + border_buses # this is before filtering; all boundry buses
+        # + specretlines  # specific lines I am retaining; really don't need though
+        # + intretlinebuses2ret  # internal lines to retain
+        # + border_buses # this is before filtering; all boundry buses
         # + border_buses_adjacent
-        + PARbuses2ret  # PAR buses and attached lines
+        # + PARbuses2ret  # PAR buses and attached lines
     )
 )
 print(f'generator buses {len(gensbusesfinal)}')
